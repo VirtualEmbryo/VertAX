@@ -12,6 +12,6 @@ vertAX is a Google JAX-powered differentiable vertex model.
 
 
 [Homepage](https://gitlab.college-de-france.fr/virtualembryo/vertax) and 
-[Team website](https://www.turlierlab.com/)
+[Team website](https://www.turlierlab.com/).
 
 
