@@ -35,7 +35,7 @@ class model:
 ##################
 ### SIMULATION ###
 ##################
-path = '.'
+path = '../../dev/scripts/'
 vertTable = jnp.load(path + '/' + 'vertTable.npy')  # jnp.loadtxt(path + 'vertTable.csv', delimiter='\t', dtype=np.float64)
 faceTable = jnp.load(path + '/' + 'faceTable.npy')  # jnp.loadtxt(path + 'faceTable.csv', delimiter='\t', dtype=np.int32)
 heTable = jnp.load(path + '/' + 'heTable.npy')  # jnp.loadtxt(path + 'heTable.csv', delimiter='\t', dtype=np.int32)
