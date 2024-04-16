@@ -8,7 +8,7 @@ def get_cmap(n, name='hsv'):
     RGB color. The keyword argument name must be a standard mpl colormap name."""
     return plt.cm.get_cmap(name, n)
 
-def plot_periodic_voronoi(vertTable, faceTable, heTable, L_box, multicolor=True, lines=True, vertices=True, name: str = '-1', save=False, show=True):
+def plot_periodic_voronoi(vertTable, faceTable, heTable, L_box, multicolor=True, lines=True, vertices=True, path='.', name='-1', save=False, show=True):
 
     cmap = get_cmap(len(faceTable))
 
@@ -79,8 +79,8 @@ def plot_periodic_voronoi(vertTable, faceTable, heTable, L_box, multicolor=True,
     plt.ylim([0, L_box])
 
     if save:
-        os.makedirs('./images/', exist_ok=True)
-        plt.savefig('./images/' + str(name) + '.png')
+        os.makedirs(path + '_images/', exist_ok=True)
+        plt.savefig(path + '_images/' + str(name) + '.png')
 
     if show:
         plt.show()
