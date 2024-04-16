@@ -16,6 +16,7 @@ import jax
 from jax import jit, jacfwd, vmap
 from jax.lax import while_loop
 from topo_geo_graph import DVM_topology, DVM_geometry
+from tqdm import trange, tqdm
 
 
 class model:
@@ -27,9 +28,6 @@ class model:
         self.cost = cost
         self.params = params
         self.L_box = jnp.sqrt(len(geo_graph.t_faceTable))
-
-        print('\n')
-        print('Simulation: # cells ' + str(len(geo_graph.t_faceTable)) + ' --> box size ' + str(round(jnp.sqrt(len(geo_graph.t_faceTable)), 3)))
 
     @partial(jit, static_argnums=(0,))
     def update_energy(self, vertTable: jnp.array, heTable: jnp.array, faceTable: jnp.array, step: float):
@@ -63,7 +61,7 @@ heTable = jnp.load(path + 'heTable.npy')  # np.loadtxt(path + 'heTable.csv', del
 
 n_cells = len(faceTable)
 L_box = jnp.sqrt(n_cells)
-MIN_DISTANCE = 0.025
+MIN_DISTANCE = 0.02
 tot_time = 20
 lagrangian_time = 200
 params_step = 0.05
@@ -154,13 +152,14 @@ geo_graph_target = DVM_geometry(graph_target, vertTable_target, L_box=L_box)
 ### START SIMULATION ###
 ########################
 
+print('Simulation:  # cells ' + str(n_cells) + ' --> box size ' + str(round(L_box, 3)))
+
 parameter = []
 
-for dt in range(tot_time):
+for dt in trange(tot_time, desc='total'):
 
-    print('dt = ' + str(dt) + ' /' + str(tot_time))
-
-    print(params)
+    # tqdm.write('dt = ' + str(dt) + ' /' + str(tot_time))
+    # tqdm.write(str(params))
 
     parameter.append(params[2][0])
 
@@ -180,14 +179,15 @@ for dt in range(tot_time):
     lagrangian_zero.append(float(simulation_zero.lagrangian(simulation_zero.geo_graph.vertTable, vertTable_target, params, beta=0.)))
     shape_factor_zero.append(float(simulation_zero.geo_graph.get_shape_factor(simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable, simulation_zero.geo_graph.t_faceTable)))
 
-    for di in range(lagrangian_time):
+    for di in trange(lagrangian_time, desc='zero', leave=False):
 
-        print('di_zero = ' + str(di) + ' /' + str(lagrangian_time))
+        # tqdm.write('di_zero = ' + str(di) + ' /' + str(lagrangian_time))
 
         simulation_zero.geo_graph.vertTable = simulation_zero.update_lagrangian(simulation_zero.geo_graph.vertTable, vertTable_target, params, beta=0., step=lagrangian_step)
         simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable = simulation_zero.geo_graph.update_vertices_positions_and_offsets(simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable)
         simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable, simulation_zero.geo_graph.t_faceTable = simulation_zero.geo_graph.update_T1(MIN_DISTANCE=MIN_DISTANCE)
         simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable = simulation_zero.geo_graph.update_vertices_positions_and_offsets(simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable)
+        tqdm.write(str(round(simulation_zero.geo_graph.check_crossings(simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable, simulation_zero.geo_graph.t_faceTable), 1)))
 
         np.save('./binaries/binaries_zero_'+str(dt)+'/' + str(di) + '_vertTable', simulation_zero.geo_graph.vertTable)
         np.save('./binaries/binaries_zero_'+str(dt)+'/' + str(di) + '_faceTable', simulation_zero.geo_graph.t_faceTable)
@@ -219,9 +219,9 @@ for dt in range(tot_time):
     lagrangian_beta.append(float(simulation_beta.lagrangian(simulation_beta.geo_graph.vertTable, vertTable_target, params, beta=beta)))
     shape_factor_beta.append(float(simulation_beta.geo_graph.get_shape_factor(simulation_beta.geo_graph.vertTable, simulation_beta.geo_graph.t_heTable, simulation_beta.geo_graph.t_faceTable)))
 
-    for dj in range(lagrangian_time):
+    for dj in trange(lagrangian_time, desc='beta', leave=False):
 
-        print('dj_beta = ' + str(dj) + ' /' + str(lagrangian_time))
+        # tqdm.write('dj_beta = ' + str(dj) + ' /' + str(lagrangian_time))
 
         simulation_beta.geo_graph.vertTable = simulation_beta.update_lagrangian(simulation_beta.geo_graph.vertTable, vertTable_target, params, beta=beta, step=lagrangian_step)
         simulation_beta.geo_graph.vertTable, simulation_beta.geo_graph.t_heTable = simulation_beta.geo_graph.update_vertices_positions_and_offsets(simulation_beta.geo_graph.vertTable, simulation_beta.geo_graph.t_heTable)
@@ -243,7 +243,5 @@ for dt in range(tot_time):
     open('./binaries/binaries_beta_' + str(dt) + '/' + '_shape_factor_beta.txt', "w").write('\n'.join(str(e) for e in shape_factor_beta))
 
     params = simulation_zero.update_params(simulation_zero.geo_graph.vertTable, simulation_beta.geo_graph.vertTable, vertTable_target, params, beta=beta, step=params_step)
-
-    print('\n')
 
 open('./parameter.txt', "w").write('\n'.join(str(e) for e in parameter))
