@@ -1,31 +1,27 @@
-###########
-## TO DO ##
-###########
-
-# 1- implement a warning when it detect a crossing (check sum of the areas, it has to be fixed to L^2).
-# 2- implement T1 only when total energy decreases, otherwise reject the T1.
-# 3- try jit-ing all the functions
-
 import os
-from functools import partial
 import time
+
+from functools import partial
+
 import jax.numpy as jnp
-import jax
 from jax import jit, jacfwd, vmap
-from jax.lax import while_loop
-from geograph import topology, geometry
-from model import model
+
 from tqdm import trange, tqdm
+
+from geograph import topology, geometry
+from model import model_energy
+
+from utils_geograph import get_area, get_perimeter, get_shape_factor
 
 
 ##################
 ### SIMULATION ###
 ##################
 
-path = '../../dev/scripts/'
-vertTable = jnp.load(path + '/' + 'vertTable.npy')  # jnp.loadtxt(path + 'vertTable.csv', delimiter='\t', dtype=np.float64)
-faceTable = jnp.load(path + '/' + 'faceTable.npy')  # jnp.loadtxt(path + 'faceTable.csv', delimiter='\t', dtype=np.int32)
-heTable = jnp.load(path + '/' + 'heTable.npy')  # jnp.loadtxt(path + 'heTable.csv', delimiter='\t', dtype=np.int32)
+path = './initial_conditions_voronoi/'
+vertTable = jnp.load(path + 'simulation_vertTable.npy')
+faceTable = jnp.load(path + 'simulation_faceTable.npy')
+heTable = jnp.load(path + 'simulation_heTable.npy')
 
 ################
 ### SEETINGS ###
@@ -33,8 +29,8 @@ heTable = jnp.load(path + '/' + 'heTable.npy')  # jnp.loadtxt(path + 'heTable.cs
 
 n_cells = len(faceTable)
 L_box = jnp.sqrt(n_cells)
-MIN_DISTANCE = 0.02
-energy_time = 100
+MIN_DISTANCE = 0.025
+energy_time = 500
 energy_step = 0.02
 
 with open('./settings.txt', 'w') as file:
@@ -73,8 +69,8 @@ geo_graph = geometry(graph, vertTable, L_box=L_box)
 
 @jit
 def cell_energy(face: float, param: jnp.array, vertTable: jnp.array, heTable: jnp.array, faceTable: jnp.array):
-    area = geo_graph.get_area(face, vertTable, heTable, faceTable)
-    perimeter = geo_graph.get_perimeter(face, vertTable, heTable, faceTable)
+    area = get_area(face, vertTable, heTable, faceTable)
+    perimeter = get_perimeter(face, vertTable, heTable, faceTable)
     return ((area - 1) ** 2) + ((perimeter - param[0]) ** 2)
 
 @jit
@@ -88,8 +84,7 @@ def energy(vertTable: jnp.array, heTable: jnp.array, faceTable: jnp.array, param
 ### START SIMULATION ###
 ########################
 
-simulation_zero = model(energy, params)
-simulation_zero_2 = model(energy, params)
+simulation_zero = model_energy(energy, params)
 
 print('Simulation:  # cells ' + str(n_cells) + ' --> box size ' + str(round(L_box, 3)))
 
@@ -97,13 +92,13 @@ energy_zero = []
 shape_factor_zero = []
 
 energy_zero.append(float(energy(geo_graph.vertTable, geo_graph.t_heTable, geo_graph.t_faceTable, params=params)))
-shape_factor_zero.append(float(geo_graph.get_shape_factor(geo_graph.vertTable, geo_graph.t_heTable, geo_graph.t_faceTable)))
+shape_factor_zero.append(float(get_shape_factor(geo_graph.vertTable, geo_graph.t_heTable, geo_graph.t_faceTable)))
 
 os.makedirs('./binaries/', exist_ok=True)
 
-jnp.save('./binaries/' + str(-1) + '_vertTable', geo_graph.vertTable)
-jnp.save('./binaries/' + str(-1) + '_faceTable', geo_graph.t_faceTable)
-jnp.save('./binaries/' + str(-1) + '_heTable', geo_graph.t_heTable)
+jnp.save('./binaries/' + str(-1) + '_simulation_vertTable', geo_graph.vertTable)
+jnp.save('./binaries/' + str(-1) + '_simulation_faceTable', geo_graph.t_faceTable)
+jnp.save('./binaries/' + str(-1) + '_simulation_heTable', geo_graph.t_heTable)
 
 for dt in trange(energy_time, desc='total'):
 
@@ -116,21 +111,21 @@ for dt in trange(energy_time, desc='total'):
     print('1 update vertices and offsets exec time: ' + str(time.time() - start))
 
     start = time.time()
-    geo_graph.vertTable, geo_graph.t_heTable, geo_graph.t_faceTable = geo_graph.update_T1(MIN_DISTANCE=MIN_DISTANCE)
+    geo_graph.vertTable, geo_graph.t_heTable, geo_graph.t_faceTable = geo_graph.update_T1(geo_graph.vertTable, geo_graph.t_heTable, geo_graph.t_faceTable, MIN_DISTANCE=MIN_DISTANCE)
+    #print(geo_graph.vertTable.shape)
     print('2 update T1 exec time: ' + str(time.time() - start))
 
     start = time.time()
     geo_graph.vertTable, geo_graph.t_heTable = geo_graph.update_vertices_positions_and_offsets(geo_graph.vertTable, geo_graph.t_heTable)
     print('3 update vertices and offsets exec time: ' + str(time.time() - start))
 
-    jnp.save('./binaries/' + str(dt) + '_vertTable', geo_graph.vertTable)
-    jnp.save('./binaries/' + str(dt) + '_faceTable', geo_graph.t_faceTable)
-    jnp.save('./binaries/' + str(dt) + '_heTable', geo_graph.t_heTable)
+    jnp.save('./binaries/' + str(dt) + '_simulation_vertTable', geo_graph.vertTable)
+    jnp.save('./binaries/' + str(dt) + '_simulation_faceTable', geo_graph.t_faceTable)
+    jnp.save('./binaries/' + str(dt) + '_simulation_heTable', geo_graph.t_heTable)
 
     energy_zero.append(float(energy(geo_graph.vertTable, geo_graph.t_heTable, geo_graph.t_faceTable, params=params)))
-    shape_factor_zero.append(float(geo_graph.get_shape_factor(geo_graph.vertTable, geo_graph.t_heTable, geo_graph.t_faceTable)))
+    shape_factor_zero.append(float(get_shape_factor(geo_graph.vertTable, geo_graph.t_heTable, geo_graph.t_faceTable)))
 
 open('./binaries/' + '_energy_zero.txt', "w").write('\n'.join(str(e) for e in energy_zero))
 open('./binaries/' + '_shape_factor_zero.txt', "w").write('\n'.join(str(sf) for sf in shape_factor_zero))
-
 

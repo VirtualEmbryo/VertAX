@@ -1,6 +1,6 @@
-###########
-## TO DO ##
-###########
+##########
+## TODO ##
+##########
 
 # 1- implement a warning when it detect a crossing (check sum of the areas, it has to be fixed to L^2).
 # 2- implement T1 only when total energy decreases, otherwise reject the T1.
@@ -8,52 +8,30 @@
 
 
 import os
-from functools import partial
 import time
-import numpy as np
-import jax.numpy as jnp
+
+from functools import partial
+
 import jax
+import jax.numpy as jnp
 from jax import jit, jacfwd, vmap
-from jax.lax import while_loop
-from topo_geo_graph import DVM_topology, DVM_geometry
+
 from tqdm import trange, tqdm
 
+from geograph import topology, geometry
+from model import model_eq_prop
 
-class model:
-
-    def __init__(self, geo_graph, energy, cost, params):
-
-        self.geo_graph = geo_graph
-        self.energy = energy
-        self.cost = cost
-        self.params = params
-        self.L_box = jnp.sqrt(len(geo_graph.t_faceTable))
-
-    @partial(jit, static_argnums=(0,))
-    def update_energy(self, vertTable: jnp.array, heTable: jnp.array, faceTable: jnp.array, step: float):
-        return vertTable - step * jacfwd(self.energy, argnums=1)(geo_graph, vertTable, heTable, faceTable, self.params)
-
-    @partial(jit, static_argnums=(0,))
-    def lagrangian(self, vertTable: jnp.array, vertTable_target: jnp.array, params: jnp.array, beta: float):
-        return energy(geo_graph, vertTable, heTable, faceTable, params) + beta * cost(vertTable, vertTable_target, self.L_box)
-
-    @partial(jit, static_argnums=(0,))
-    def update_lagrangian(self, vertTable: jnp.array, vertTable_target: jnp.array, params: jnp.array, beta: float, step: float):
-        return vertTable - step * jacfwd(self.lagrangian, argnums=0)(vertTable, vertTable_target, params, beta)
-
-    @partial(jit, static_argnums=(0,))
-    def update_params(self, vertTable_zero: jnp.array, vertTable_beta: jnp.array, vertTable_target: jnp.array, params: jnp.array, beta: float, step: float):
-        return params - step * (1/beta) * (jacfwd(self.lagrangian, argnums=2)(vertTable_beta, vertTable_target, params, beta) - jacfwd(self.lagrangian, argnums=2)(vertTable_zero, vertTable_target, params, beta=0.))
+from utils_geograph import get_area, get_perimeter, get_shape_factor
 
 
 ##################
 ### SIMULATION ###
 ##################
 
-path = '../../dev/scripts/'
-vertTable = jnp.load(path + 'vertTable.npy')  # np.loadtxt(path + 'vertTable.csv', delimiter='\t', dtype=np.float64)
-faceTable = jnp.load(path + 'faceTable.npy')  # np.loadtxt(path + 'faceTable.csv', delimiter='\t', dtype=np.int32)
-heTable = jnp.load(path + 'heTable.npy')  # np.loadtxt(path + 'heTable.csv', delimiter='\t', dtype=np.int32)
+path = './initial_conditions_voronoi/'
+vertTable = jnp.load(path + 'simulation_vertTable.npy')
+faceTable = jnp.load(path + 'simulation_faceTable.npy')
+heTable = jnp.load(path + 'simulation_heTable.npy')
 
 ################
 ### SEETINGS ###
@@ -61,12 +39,13 @@ heTable = jnp.load(path + 'heTable.npy')  # np.loadtxt(path + 'heTable.csv', del
 
 n_cells = len(faceTable)
 L_box = jnp.sqrt(n_cells)
-MIN_DISTANCE = 0.02
-tot_time = 20
-lagrangian_time = 200
-params_step = 0.05
+MIN_DISTANCE = 0.025
+tot_time = 1000
+lagrangian_time = 150
+params_step = 0.1
 lagrangian_step = 0.02
-beta = 0.02
+#beta = 0.02
+beta = 0.2
 
 with open('./settings.txt', 'w') as file:
     file.write('n_cells = ' + str(n_cells) + '\n')
@@ -98,16 +77,17 @@ params = jnp.array(params)
 ### ENERGY ###
 ##############
 
-@partial(jit, static_argnums=(0,))
-def cell_energy(geo_graph, face: float, param: jnp.array, vertTable: jnp.array, heTable: jnp.array, faceTable: jnp.array):
-    area = geo_graph.get_area(face, vertTable, heTable, faceTable)
-    perimeter = geo_graph.get_perimeter(face, vertTable, heTable, faceTable)
+@jit
+def cell_energy(face: float, param: jnp.array, vertTable: jnp.array, heTable: jnp.array, faceTable: jnp.array):
+    area = get_area(face, vertTable, heTable, faceTable)
+    perimeter = get_perimeter(face, vertTable, heTable, faceTable)
+    #jax.debug.print("area perimeter {d} {d2}", d=area, d2=perimeter)
     return ((area - 1) ** 2) + ((perimeter - param[0]) ** 2)
 
-@partial(jit, static_argnums=(0,))
-def energy(geo_graph, vertTable: jnp.array, heTable: jnp.array, faceTable: jnp.array, params: jnp.array):
+@jit
+def energy(vertTable: jnp.array, heTable: jnp.array, faceTable: jnp.array, params: jnp.array):
     faces = jnp.arange(len(faceTable))
-    mapped_fn = lambda face, param: cell_energy(geo_graph, face, param, vertTable, heTable, faceTable)
+    mapped_fn = lambda face, param: cell_energy(face, param, vertTable, heTable, faceTable)
     cell_energies = vmap(mapped_fn)(faces, params)
     return jnp.sum(cell_energies)
 
@@ -120,33 +100,34 @@ def energy(geo_graph, vertTable: jnp.array, heTable: jnp.array, faceTable: jnp.a
 @jit
 def min_distance(vertTable: jnp.array, vertTable_target: jnp.array, v: int, L_box: jnp.array):
     return jnp.min(jnp.array([jnp.sqrt((vertTable[v][0] - vertTable_target[v][0]) ** 2 + (vertTable[v][1] - vertTable_target[v][1]) ** 2),
-                              jnp.sqrt((vertTable[v][0] - vertTable_target[v][0] + L_box) ** 2 + (vertTable[v][1] - vertTable_target[v][1]) ** 2),
-                              jnp.sqrt((vertTable[v][0] - vertTable_target[v][0] - L_box) ** 2 + (vertTable[v][1] - vertTable_target[v][1]) ** 2),
-                              jnp.sqrt((vertTable[v][0] - vertTable_target[v][0]) ** 2 + (vertTable[v][1] - vertTable_target[v][1] + L_box) ** 2),
-                              jnp.sqrt((vertTable[v][0] - vertTable_target[v][0]) ** 2 + (vertTable[v][1] - vertTable_target[v][1] - L_box) ** 2),
-                              jnp.sqrt((vertTable[v][0] - vertTable_target[v][0] + L_box) ** 2 + (vertTable[v][1] - vertTable_target[v][1] + L_box) ** 2),
-                              jnp.sqrt((vertTable[v][0] - vertTable_target[v][0] + L_box) ** 2 + (vertTable[v][1] - vertTable_target[v][1] - L_box) ** 2),
-                              jnp.sqrt((vertTable[v][0] - vertTable_target[v][0] - L_box) ** 2 + (vertTable[v][1] - vertTable_target[v][1] + L_box) ** 2),
-                              jnp.sqrt((vertTable[v][0] - vertTable_target[v][0] - L_box) ** 2 + (vertTable[v][1] - vertTable_target[v][1] - L_box) ** 2)]))
+                              jnp.sqrt((vertTable[v][0] - (vertTable_target[v][0] + L_box)) ** 2 + (vertTable[v][1] - vertTable_target[v][1]) ** 2),
+                              jnp.sqrt((vertTable[v][0] - (vertTable_target[v][0] - L_box)) ** 2 + (vertTable[v][1] - vertTable_target[v][1]) ** 2),
+                              jnp.sqrt((vertTable[v][0] - vertTable_target[v][0]) ** 2 + (vertTable[v][1] - (vertTable_target[v][1] + L_box)) ** 2),
+                              jnp.sqrt((vertTable[v][0] - vertTable_target[v][0]) ** 2 + (vertTable[v][1] - (vertTable_target[v][1] - L_box)) ** 2),
+                              jnp.sqrt((vertTable[v][0] - (vertTable_target[v][0] + L_box)) ** 2 + (vertTable[v][1] - (vertTable_target[v][1] + L_box)) ** 2),
+                              jnp.sqrt((vertTable[v][0] - (vertTable_target[v][0] + L_box)) ** 2 + (vertTable[v][1] - (vertTable_target[v][1] - L_box)) ** 2),
+                              jnp.sqrt((vertTable[v][0] - (vertTable_target[v][0] - L_box)) ** 2 + (vertTable[v][1] - (vertTable_target[v][1] + L_box)) ** 2),
+                              jnp.sqrt((vertTable[v][0] - (vertTable_target[v][0] - L_box)) ** 2 + (vertTable[v][1] - (vertTable_target[v][1] - L_box)) ** 2)]))
 
 @jit
 def cost(vertTable: jnp.array, vertTable_target: jnp.array, L_box: jnp.array):
     v = jnp.arange(len(vertTable))
     mapped_fn = lambda vec: min_distance(vertTable, vertTable_target, vec, L_box)
     distances = vmap(mapped_fn)(v)
+    #jax.debug.print("distances {d}", d=distances)
     return jnp.linalg.norm(distances)
 
 ##############
 ### TARGET ###
 ##############
 
-path = '../../dev/scripts/'
+path = './initial_conditions_voronoi/'
 vertTable_target = jnp.load(path + 'target_vertTable.npy')
 faceTable_target = jnp.load(path + 'target_faceTable.npy')
 heTable_target = jnp.load(path + 'target_heTable.npy')
 
-graph_target = DVM_topology(heTable_target, faceTable_target)
-geo_graph_target = DVM_geometry(graph_target, vertTable_target, L_box=L_box)
+graph_target = topology(heTable_target, faceTable_target)
+geo_graph_target = geometry(graph_target, vertTable_target, L_box=L_box)
 
 ########################
 ### START SIMULATION ###
@@ -154,7 +135,7 @@ geo_graph_target = DVM_geometry(graph_target, vertTable_target, L_box=L_box)
 
 print('Simulation:  # cells ' + str(n_cells) + ' --> box size ' + str(round(L_box, 3)))
 
-parameter = []
+parameters = []
 
 for dt in trange(tot_time, desc='total'):
 
@@ -163,11 +144,12 @@ for dt in trange(tot_time, desc='total'):
 
     tqdm.write(str(params))
 
-    parameter.append(params[2][0])
+    parameters.append('\t'.join(map(str, params.flatten())))
 
-    graph = DVM_topology(heTable, faceTable)
-    geo_graph = DVM_geometry(graph, vertTable, L_box=L_box)
-    simulation_zero = model(geo_graph, energy, cost, params)
+    graph_zero = topology(heTable, faceTable)
+    geo_graph_zero = geometry(graph_zero, vertTable, L_box=L_box)
+
+    simulation_zero = model_eq_prop(energy, cost, L_box, params)
 
     os.makedirs('./binaries/binaries_zero_' + str(dt) + '/', exist_ok=True)
 
@@ -177,43 +159,39 @@ for dt in trange(tot_time, desc='total'):
     shape_factor_zero = []
     lagrangian_step_zero = lagrangian_step
 
-    energy_zero.append(float(energy(simulation_zero.geo_graph, simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable, simulation_zero.geo_graph.t_faceTable, params=params)))
-    cost_zero.append(float(cost(simulation_zero.geo_graph.vertTable, vertTable_target, L_box)))
-    lagrangian_zero.append(float(simulation_zero.lagrangian(simulation_zero.geo_graph.vertTable, vertTable_target, params, beta=0.)))
-    shape_factor_zero.append(float(simulation_zero.geo_graph.get_shape_factor(simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable, simulation_zero.geo_graph.t_faceTable)))
+    energy_zero.append(float(energy(geo_graph_zero.vertTable, geo_graph_zero.t_heTable, geo_graph_zero.t_faceTable, params=params)))
+    cost_zero.append(float(cost(geo_graph_zero.vertTable, vertTable_target, L_box)))
+    lagrangian_zero.append(float(simulation_zero.lagrangian(geo_graph_zero.vertTable, geo_graph_zero.t_heTable, geo_graph_zero.t_faceTable, vertTable_target, params, beta=0.)))
+    shape_factor_zero.append(float(get_shape_factor(geo_graph_zero.vertTable, geo_graph_zero.t_heTable, geo_graph_zero.t_faceTable)))
 
     for di in trange(lagrangian_time, desc='zero', leave=False):
 
         # tqdm.write('di_zero = ' + str(di) + ' /' + str(lagrangian_time))
 
-        vertTable_new = simulation_zero.update_lagrangian(simulation_zero.geo_graph.vertTable, vertTable_target, params, beta=0., step=lagrangian_step_zero)
-        while simulation_zero.geo_graph.check_collisions(vertTable_new, simulation_zero.geo_graph.t_heTable, simulation_zero.geo_graph.t_faceTable):
-            tqdm.write('Collision detected at dt=' + str(dt) + ' di=' + str(di) + ', lagrangian step zero: ' + str(lagrangian_step_zero) + ' --> ' + str(lagrangian_step_zero / 2))
-            lagrangian_step_zero = lagrangian_step_zero / 2
-            vertTable_new = simulation_zero.update_lagrangian(simulation_zero.geo_graph.vertTable, vertTable_target, params, beta=0., step=lagrangian_step_zero)
+        geo_graph_zero.vertTable = simulation_zero.update_lagrangian(geo_graph_zero.vertTable, geo_graph_zero.t_heTable, geo_graph_zero.t_faceTable, vertTable_target, params, beta=0., step=lagrangian_step_zero)
 
-        simulation_zero.geo_graph.vertTable = vertTable_new
-        simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable = simulation_zero.geo_graph.update_vertices_positions_and_offsets(simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable)
-        simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable, simulation_zero.geo_graph.t_faceTable = simulation_zero.geo_graph.update_T1(MIN_DISTANCE=MIN_DISTANCE)
-        simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable = simulation_zero.geo_graph.update_vertices_positions_and_offsets(simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable)
+        geo_graph_zero.vertTable, geo_graph_zero.t_heTable = geo_graph_zero.update_vertices_positions_and_offsets(geo_graph_zero.vertTable, geo_graph_zero.t_heTable)
+        geo_graph_zero.vertTable, geo_graph_zero.t_heTable, geo_graph_zero.t_faceTable = geo_graph_zero.update_T1(geo_graph_zero.vertTable, geo_graph_zero.t_heTable, geo_graph_zero.t_faceTable, MIN_DISTANCE=MIN_DISTANCE)
+        geo_graph_zero.vertTable, geo_graph_zero.t_heTable = geo_graph_zero.update_vertices_positions_and_offsets(geo_graph_zero.vertTable, geo_graph_zero.t_heTable)
 
-        jnp.save('./binaries/binaries_zero_'+str(dt)+'/' + str(di) + '_vertTable', simulation_zero.geo_graph.vertTable)
-        jnp.save('./binaries/binaries_zero_'+str(dt)+'/' + str(di) + '_faceTable', simulation_zero.geo_graph.t_faceTable)
-        jnp.save('./binaries/binaries_zero_'+str(dt)+'/' + str(di) + '_heTable', simulation_zero.geo_graph.t_heTable)
+        jnp.save('./binaries/binaries_zero_'+str(dt)+'/' + str(di) + '_vertTable', geo_graph_zero.vertTable)
+        jnp.save('./binaries/binaries_zero_'+str(dt)+'/' + str(di) + '_faceTable', geo_graph_zero.t_faceTable)
+        jnp.save('./binaries/binaries_zero_'+str(dt)+'/' + str(di) + '_heTable', geo_graph_zero.t_heTable)
 
-        energy_zero.append(float(energy(simulation_zero.geo_graph, simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable, simulation_zero.geo_graph.t_faceTable, params=params)))
-        cost_zero.append(float(cost(simulation_zero.geo_graph.vertTable, vertTable_target, L_box)))
-        lagrangian_zero.append(float(simulation_zero.lagrangian(simulation_zero.geo_graph.vertTable, vertTable_target, params, beta=0.)))
-        shape_factor_zero.append(float(simulation_zero.geo_graph.get_shape_factor(simulation_zero.geo_graph.vertTable, simulation_zero.geo_graph.t_heTable, simulation_zero.geo_graph.t_faceTable)))
+        energy_zero.append(float(energy(geo_graph_zero.vertTable, geo_graph_zero.t_heTable, geo_graph_zero.t_faceTable, params=params)))
+        cost_zero.append(float(cost(geo_graph_zero.vertTable, vertTable_target, L_box)))
+        lagrangian_zero.append(float(simulation_zero.lagrangian(geo_graph_zero.vertTable, geo_graph_zero.t_heTable, geo_graph_zero.t_faceTable, vertTable_target, params, beta=0.)))
+        shape_factor_zero.append(float(get_shape_factor(geo_graph_zero.vertTable, geo_graph_zero.t_heTable, geo_graph_zero.t_faceTable)))
 
     open('./binaries/binaries_zero_'+str(dt)+'/' + '_energy_zero.txt', "w").write('\n'.join(str(e) for e in energy_zero))
     open('./binaries/binaries_zero_'+str(dt)+'/' + '_cost_zero.txt', "w").write('\n'.join(str(e) for e in cost_zero))
     open('./binaries/binaries_zero_'+str(dt)+'/' + '_lagrangian_zero.txt', "w").write('\n'.join(str(e) for e in lagrangian_zero))
     open('./binaries/binaries_zero_'+str(dt)+'/' + '_shape_factor_zero.txt', "w").write('\n'.join(str(e) for e in shape_factor_zero))
 
-    graph = DVM_topology(heTable, faceTable)
-    geo_graph = DVM_geometry(graph, vertTable, L_box=L_box)
-    simulation_beta = model(geo_graph, energy, cost, params)
+    graph_beta = topology(heTable, faceTable)
+    geo_graph_beta = geometry(graph_beta, vertTable, L_box=L_box)
+
+    simulation_beta = model_eq_prop(energy, cost, L_box, params)
 
     os.makedirs('./binaries/binaries_beta_' + str(dt) + '/', exist_ok=True)
 
@@ -223,40 +201,40 @@ for dt in trange(tot_time, desc='total'):
     shape_factor_beta = []
     lagrangian_step_beta = lagrangian_step
 
-    energy_beta.append(float(energy(simulation_beta.geo_graph, simulation_beta.geo_graph.vertTable, simulation_beta.geo_graph.t_heTable, simulation_beta.geo_graph.t_faceTable, params=params)))
-    cost_beta.append(float(cost(simulation_beta.geo_graph.vertTable, vertTable_target, L_box)))
-    lagrangian_beta.append(float(simulation_beta.lagrangian(simulation_beta.geo_graph.vertTable, vertTable_target, params, beta=beta)))
-    shape_factor_beta.append(float(simulation_beta.geo_graph.get_shape_factor(simulation_beta.geo_graph.vertTable, simulation_beta.geo_graph.t_heTable, simulation_beta.geo_graph.t_faceTable)))
+    energy_beta.append(float(energy(geo_graph_beta.vertTable, geo_graph_beta.t_heTable, geo_graph_beta.t_faceTable, params=params)))
+    cost_beta.append(float(cost(geo_graph_beta.vertTable, vertTable_target, L_box)))
+    lagrangian_beta.append(float(simulation_beta.lagrangian(geo_graph_beta.vertTable, geo_graph_beta.t_heTable, geo_graph_beta.t_faceTable, vertTable_target, params, beta=beta)))
+    shape_factor_beta.append(float(get_shape_factor(geo_graph_beta.vertTable, geo_graph_beta.t_heTable, geo_graph_beta.t_faceTable)))
 
     for dj in trange(lagrangian_time, desc='beta', leave=False):
 
         # tqdm.write('dj_beta = ' + str(dj) + ' /' + str(lagrangian_time))
 
-        vertTable_new = simulation_beta.update_lagrangian(simulation_beta.geo_graph.vertTable, vertTable_target, params, beta=0., step=lagrangian_step_zero)
-        while simulation_beta.geo_graph.check_collisions(vertTable_new, simulation_beta.geo_graph.t_heTable, simulation_beta.geo_graph.t_faceTable):
-            tqdm.write('Collision detected at dt=' + str(dt) + ' dj=' + str(dj) + ', lagrangian step beta: ' + str(lagrangian_step_beta) + ' --> ' + str(lagrangian_step_beta / 2))
-            lagrangian_step_beta = lagrangian_step_beta / 2
-            vertTable_new = simulation_beta.update_lagrangian(simulation_beta.geo_graph.vertTable, vertTable_target, params, beta=0., step=lagrangian_step_beta)
+        geo_graph_beta.vertTable = simulation_beta.update_lagrangian(geo_graph_beta.vertTable, geo_graph_beta.t_heTable, geo_graph_beta.t_faceTable, vertTable_target, params, beta=beta, step=lagrangian_step_zero)
 
-        simulation_beta.geo_graph.vertTable = vertTable_new
-        simulation_beta.geo_graph.vertTable, simulation_beta.geo_graph.t_heTable = simulation_beta.geo_graph.update_vertices_positions_and_offsets(simulation_beta.geo_graph.vertTable, simulation_beta.geo_graph.t_heTable)
-        simulation_beta.geo_graph.vertTable, simulation_beta.geo_graph.t_heTable, simulation_beta.geo_graph.t_faceTable = simulation_beta.geo_graph.update_T1(MIN_DISTANCE=MIN_DISTANCE)
-        simulation_beta.geo_graph.vertTable, simulation_beta.geo_graph.t_heTable = simulation_beta.geo_graph.update_vertices_positions_and_offsets(simulation_beta.geo_graph.vertTable, simulation_beta.geo_graph.t_heTable)
+        geo_graph_beta.vertTable, geo_graph_beta.t_heTable = geo_graph_beta.update_vertices_positions_and_offsets(geo_graph_beta.vertTable, geo_graph_beta.t_heTable)
+        geo_graph_beta.vertTable, geo_graph_beta.t_heTable, geo_graph_beta.t_faceTable = geo_graph_beta.update_T1(geo_graph_beta.vertTable, geo_graph_beta.t_heTable, geo_graph_beta.t_faceTable, MIN_DISTANCE=MIN_DISTANCE)
+        geo_graph_beta.vertTable, geo_graph_beta.t_heTable = geo_graph_beta.update_vertices_positions_and_offsets(geo_graph_beta.vertTable, geo_graph_beta.t_heTable)
 
-        jnp.save('./binaries/binaries_beta_'+str(dt)+'/' + str(dj) + '_vertTable', simulation_beta.geo_graph.vertTable)
-        jnp.save('./binaries/binaries_beta_'+str(dt)+'/' + str(dj) + '_faceTable', simulation_beta.geo_graph.t_faceTable)
-        jnp.save('./binaries/binaries_beta_'+str(dt)+'/' + str(dj) + '_heTable', simulation_beta.geo_graph.t_heTable)
+        jnp.save('./binaries/binaries_beta_'+str(dt)+'/' + str(dj) + '_vertTable', geo_graph_beta.vertTable)
+        jnp.save('./binaries/binaries_beta_'+str(dt)+'/' + str(dj) + '_faceTable', geo_graph_beta.t_faceTable)
+        jnp.save('./binaries/binaries_beta_'+str(dt)+'/' + str(dj) + '_heTable', geo_graph_beta.t_heTable)
 
-        energy_beta.append(float(energy(simulation_beta.geo_graph, simulation_beta.geo_graph.vertTable, simulation_beta.geo_graph.t_heTable, simulation_beta.geo_graph.t_faceTable, params=params)))
-        cost_beta.append(float(cost(simulation_beta.geo_graph.vertTable, vertTable_target, L_box)))
-        lagrangian_beta.append(float(simulation_beta.lagrangian(simulation_beta.geo_graph.vertTable, vertTable_target, params, beta=beta)))
-        shape_factor_beta.append(float(simulation_beta.geo_graph.get_shape_factor(simulation_beta.geo_graph.vertTable, simulation_beta.geo_graph.t_heTable, simulation_beta.geo_graph.t_faceTable)))
+        energy_beta.append(float(energy(geo_graph_beta.vertTable, geo_graph_beta.t_heTable, geo_graph_beta.t_faceTable, params=params)))
+        cost_beta.append(float(cost(geo_graph_beta.vertTable, vertTable_target, L_box)))
+        lagrangian_beta.append(float(simulation_beta.lagrangian(geo_graph_beta.vertTable, geo_graph_beta.t_heTable, geo_graph_beta.t_faceTable, vertTable_target, params, beta=beta)))
+        shape_factor_beta.append(float(get_shape_factor(geo_graph_beta.vertTable, geo_graph_beta.t_heTable, geo_graph_beta.t_faceTable)))
 
     open('./binaries/binaries_beta_' + str(dt) + '/' + '_energy_beta.txt', "w").write('\n'.join(str(e) for e in energy_beta))
     open('./binaries/binaries_beta_' + str(dt) + '/' + '_cost_beta.txt', "w").write('\n'.join(str(e) for e in cost_beta))
     open('./binaries/binaries_beta_' + str(dt) + '/' + '_lagrangian_beta.txt', "w").write('\n'.join(str(e) for e in lagrangian_beta))
     open('./binaries/binaries_beta_' + str(dt) + '/' + '_shape_factor_beta.txt', "w").write('\n'.join(str(e) for e in shape_factor_beta))
 
-    params = simulation_zero.update_params(simulation_zero.geo_graph.vertTable, simulation_beta.geo_graph.vertTable, vertTable_target, params, beta=beta, step=params_step)
+    params = simulation_zero.update_params(geo_graph_zero.vertTable, geo_graph_zero.t_heTable, geo_graph_zero.t_faceTable, geo_graph_beta.vertTable, geo_graph_beta.t_heTable, geo_graph_beta.t_faceTable, vertTable_target, params, beta=beta, step=params_step)
 
-open('./parameter.txt', "w").write('\n'.join(str(e) for e in parameter))
+    if dt % 10 == 0:
+        with open('parameters.txt', 'a') as file:
+            for line in parameters:
+                file.write(line + '\n')
+        parameters = []
+

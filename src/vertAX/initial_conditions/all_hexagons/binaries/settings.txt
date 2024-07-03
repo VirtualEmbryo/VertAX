@@ -1,8 +1,0 @@
-n_cells = 20
-L_box = 4.472136
-MIN_DISTANCE = 0.025
-cost_time = 1
-energy_time = 500
-cost_step = 0.5
-energy_step = 0.02
-beta = 0.05
