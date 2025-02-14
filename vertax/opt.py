@@ -167,16 +167,16 @@ def inner_optax(vertTable: jnp.array,
 #####################
 
 def loss_out_optax(areas_params: jnp.array, 
-                edges_params: jnp.array,
-                vertTable: jnp.array, 
-                heTable: jnp.array, 
-                faceTable: jnp.array, 
-                vertTable_target: jnp.array,
-                L_in,
-                L_out,
-                solver_inner,
-                min_dist_T1,
-                iterations: int):
+                   edges_params: jnp.array,
+                   vertTable: jnp.array, 
+                   heTable: jnp.array, 
+                   faceTable: jnp.array, 
+                   vertTable_target: jnp.array,
+                   L_in,
+                   L_out,
+                   solver_inner,
+                   min_dist_T1,
+                   iterations: int):
 
     vertTable, heTable, faceTable = inner_optax(vertTable, heTable, faceTable, areas_params, edges_params, L_in=L_in, solver=solver_inner, iterations=iterations, min_dist_T1=min_dist_T1)
     

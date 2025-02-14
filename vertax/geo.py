@@ -95,6 +95,56 @@ def get_area(face,
 
     return 0.5 * jnp.abs(sum_edges(face, heTable, faceTable, fun)[0])
 
+# selecting verts hes faces for which all points are inside the box
+def list_verts_hes_faces(vertTable: jnp.array, 
+                         heTable: jnp.array, 
+                         faceTable: jnp.array):
+
+    L_box = jnp.sqrt(len(faceTable))
+
+    selected_faces = []
+    selected_hes = jnp.array([], dtype=int)
+    selected_verts = jnp.array([], dtype=int)
+
+    for face in range(len(faceTable)):
+
+        start_he = faceTable.at[face].get()
+
+        he = start_he
+        v_source = heTable.at[he, 3].get()
+        
+        hes_idxs = [he]
+        verts_idxs = [v_source]
+
+        offset_x = jnp.array([heTable.at[he, 6].get()])
+        offset_y = jnp.array([heTable.at[he, 7].get()])
+
+        he = heTable.at[he, 1].get()
+
+        while he != start_he:
+            v_source = heTable.at[he, 3].get()
+
+            hes_idxs.append(he)
+            verts_idxs.append(v_source)
+
+            offset_x = jnp.concatenate((offset_x, jnp.array([heTable.at[he, 6].get()])))
+            offset_y = jnp.concatenate((offset_y, jnp.array([heTable.at[he, 7].get()])))
+
+            he = heTable.at[he, 1].get()
+        
+        # Check if all offsets are zero
+        if jnp.all(offset_x == 0) and jnp.all(offset_y == 0):
+            selected_faces.append(face)
+            selected_hes = jnp.concatenate((selected_hes, jnp.array(hes_idxs)))
+            selected_verts = jnp.concatenate((selected_verts, jnp.array(verts_idxs)))
+
+    # Ensure unique elements in each array
+    selected_verts = jnp.unique(selected_verts)
+    selected_hes = jnp.unique(selected_hes)
+    selected_faces = jnp.unique(jnp.array(selected_faces))
+
+    return selected_verts, selected_hes, selected_faces
+
 # (only for id implementation)
 # listing vertices of a face 
 @jit

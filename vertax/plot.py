@@ -90,12 +90,6 @@ def plot_geograph(vertTable, heTable, faceTable, L_box, flip_x=False, flip_y=Fal
 
     plt.gca().set_aspect('equal')
 
-    fig = plt.gcf()
-    fig.canvas.draw()
-    img_array = np.array(fig.canvas.renderer.buffer_rgba())
-    img_gray = np.dot(img_array[..., :3], [0.2989, 0.587, 0.114])  # Convert to grayscale
-    img_jax = jnp.array(img_gray.astype(np.uint8))  # Convert to 8-bit format
-
     if save:
         plt.savefig(path + str(name) + '.png')
 
@@ -103,5 +97,3 @@ def plot_geograph(vertTable, heTable, faceTable, L_box, flip_x=False, flip_y=Fal
         plt.show()
 
     plt.clf()
-
-    return img_jax
