@@ -5,5 +5,5 @@ Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
 # VertAX
 
 
-VertAX is a Google JAX-powered differentiable vertex model for inference through bilevel optimization.
+VertAX is a Google JAX-powered differentiable vertex model for solving inverse problems through bilevel optimization.
 
