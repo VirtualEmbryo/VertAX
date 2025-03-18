@@ -21,7 +21,7 @@ def save_geograph(path: str, vertTable, heTable, faceTable):
     jnp.save(path+'faceTable', faceTable)
 
 
-def create_geograph_from_seeds(seeds: np.array, path: str, show=False):
+def create_geograph_from_seeds(seeds: np.array, show=False):
 
     n_cells = len(seeds)
     L_box = np.sqrt(n_cells)
@@ -261,23 +261,23 @@ def create_geograph_from_seeds(seeds: np.array, path: str, show=False):
         heTable[i][6] = offsets[he][0]  # he_offset x vert target
         heTable[i][7] = offsets[he][1]  # he_offset y vert target
 
-    os.makedirs(path + 'simulation', exist_ok=True)
+    os.makedirs('./initial_condition/simulation/', exist_ok=True)
 
-    np.savetxt(path + 'simulation/vertTable.csv', vertTable, delimiter='\t', fmt='%1.18f')
-    np.savetxt(path + 'simulation/faceTable.csv', faceTable, delimiter='\t', fmt='%1.0d')
-    np.savetxt(path + 'simulation/heTable.csv', heTable, delimiter='\t', fmt='%1.0d')
+    np.savetxt('./initial_condition/simulation/vertTable.csv', vertTable, delimiter='\t', fmt='%1.18f')
+    np.savetxt('./initial_condition/simulation/faceTable.csv', faceTable, delimiter='\t', fmt='%1.0d')
+    np.savetxt('./initial_condition/simulation/heTable.csv', heTable, delimiter='\t', fmt='%1.0d')
 
-    vertTable = np.loadtxt(path + 'simulation/vertTable.csv', delimiter='\t', dtype=np.float64)
-    faceTable = np.loadtxt(path + 'simulation/faceTable.csv', delimiter='\t', dtype=np.int32)
-    heTable = np.loadtxt(path + 'simulation/heTable.csv', delimiter='\t', dtype=np.int32)
+    vertTable = np.loadtxt('./initial_condition/simulation/vertTable.csv', delimiter='\t', dtype=np.float64)
+    faceTable = np.loadtxt('./initial_condition/simulation/faceTable.csv', delimiter='\t', dtype=np.int32)
+    heTable = np.loadtxt('./initial_condition/simulation/heTable.csv', delimiter='\t', dtype=np.int32)
 
-    np.save(path + 'simulation/vertTable', vertTable)
-    np.save(path + 'simulation/faceTable', faceTable)
-    np.save(path + 'simulation/heTable', heTable)
+    np.save('./initial_condition/simulation/vertTable', vertTable)
+    np.save('./initial_condition/simulation/faceTable', faceTable)
+    np.save('./initial_condition/simulation/heTable', heTable)
 
-    # os.remove(path + 'simulation/vertTable.csv')
-    # os.remove(path + 'simulation/faceTable.csv')
-    # os.remove(path + 'simulation/heTable.csv')
+    # os.remove('./initial_condition/simulation/vertTable.csv')
+    # os.remove('./initial_condition/simulation/faceTable.csv')
+    # os.remove('./initial_condition/simulation/heTable.csv')
 
     if show:
         img_jax = plot_geograph(vertTable.astype(float), 
@@ -289,15 +289,15 @@ def create_geograph_from_seeds(seeds: np.array, path: str, show=False):
                       multicolor=True, 
                       lines=True, 
                       vertices=False, 
-                      path= path + 'simulation/', 
+                      path='./initial_condition/simulation/', 
                       name='simulation', 
                       save=True, 
                       show=True)
 
-    return jnp.load(path + 'simulation/vertTable.npy'), jnp.load(path + 'simulation/heTable.npy'), jnp.load(path + 'simulation/faceTable.npy')
+    return jnp.load('./initial_condition/simulation/vertTable.npy'), jnp.load('./initial_condition/simulation/heTable.npy'), jnp.load('./initial_condition/simulation/faceTable.npy')
 
 
-def create_geograph_from_image(image: np.array, path: str, show=False):
+def create_geograph_from_image(image: np.array, show=False):
     
     def segment(image):
         # Ensure the image is in the correct format 
@@ -609,23 +609,23 @@ def create_geograph_from_image(image: np.array, path: str, show=False):
         heTable[i][6] = offsets[he][0]  # he_offset x vert target
         heTable[i][7] = offsets[he][1]  # he_offset y vert target
 
-    os.makedirs(path + 'simulation/', exist_ok=True)
+    os.makedirs('./initial_condition/simulation/', exist_ok=True)
 
-    np.savetxt(path + 'simulation/vertTable.csv', vertTable, delimiter='\t', fmt='%1.18f')
-    np.savetxt(path + 'simulation/faceTable.csv', faceTable, delimiter='\t', fmt='%1.0d')
-    np.savetxt(path + 'simulation/heTable.csv', heTable, delimiter='\t', fmt='%1.0d')
+    np.savetxt('./initial_condition/simulation/vertTable.csv', vertTable, delimiter='\t', fmt='%1.18f')
+    np.savetxt('./initial_condition/simulation/faceTable.csv', faceTable, delimiter='\t', fmt='%1.0d')
+    np.savetxt('./initial_condition/simulation/heTable.csv', heTable, delimiter='\t', fmt='%1.0d')
 
-    vertTable = np.loadtxt(path + 'simulation/vertTable.csv', delimiter='\t', dtype=np.float64)
-    faceTable = np.loadtxt(path + 'simulation/faceTable.csv', delimiter='\t', dtype=np.int32)
-    heTable = np.loadtxt(path + 'simulation/heTable.csv', delimiter='\t', dtype=np.int32)
+    vertTable = np.loadtxt('./initial_condition/simulation/vertTable.csv', delimiter='\t', dtype=np.float64)
+    faceTable = np.loadtxt('./initial_condition/simulation/faceTable.csv', delimiter='\t', dtype=np.int32)
+    heTable = np.loadtxt('./initial_condition/simulation/heTable.csv', delimiter='\t', dtype=np.int32)
 
-    np.save(path + 'simulation/vertTable', vertTable)
-    np.save(path + 'simulation/faceTable', faceTable)
-    np.save(path + 'simulation/heTable', heTable)
+    np.save('./initial_condition/simulation/vertTable', vertTable)
+    np.save('./initial_condition/simulation/faceTable', faceTable)
+    np.save('./initial_condition/simulation/heTable', heTable)
 
-    # os.remove(path + 'simulation/vertTable.csv')
-    # os.remove(path + 'simulation/faceTable.csv')
-    # os.remove(path + 'simulation/heTable.csv')
+    # os.remove('./initial_condition/simulation/vertTable.csv')
+    # os.remove('./initial_condition/simulation/faceTable.csv')
+    # os.remove('./initial_condition/simulation/heTable.csv')
 
     if show:
         # Define a gradient colormap (e.g., 'viridis')
@@ -673,9 +673,9 @@ def create_geograph_from_image(image: np.array, path: str, show=False):
                     multicolor=True, 
                     lines=True, 
                     vertices=False, 
-                    path= path + 'simulation/', 
+                    path='./initial_condition/simulation/', 
                     name='simulation', 
                     save=True, 
                     show=True)
 
-    return jnp.load(path + 'simulation/vertTable.npy'), jnp.load(path + 'simulation/heTable.npy'), jnp.load(path + 'simulation/faceTable.npy')
+    return jnp.load('./initial_condition/simulation/vertTable.npy'), jnp.load('./initial_condition/simulation/heTable.npy'), jnp.load('./initial_condition/simulation/faceTable.npy')

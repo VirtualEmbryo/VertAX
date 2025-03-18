@@ -1,11 +1,10 @@
-import jax
 import jax.numpy as jnp
 from jax import jit, vmap
 
-from jax.numpy import arange,array,diff,expand_dims,einsum,exp,int32,meshgrid,pi,sqrt,stack
+from jax.numpy import abs,arange,array,diff,expand_dims,einsum,exp,int32,meshgrid,pi,sqrt,stack
 from jax.numpy import sinc as npsinc
-from jax.numpy.fft import ifft2
-
+from jax.numpy.fft import ifft2,fft2
+from jax.numpy.linalg import det,inv
 
 # Image size, larger than the cube [-1,1]² --> FFT produces artefacts otherwise
 s=array([-3,+3],dtype=float)
@@ -112,23 +111,17 @@ def gaussian_blur_line_segments(x):
 ##################
 
 @jit
-def cost_v2v(vertTable,
-             heTable,
-             faceTable,
-             selected_verts,
-             selected_hes,
-             selected_faces,
-             vertTable_target,
-             heTable_target,
-             faceTable_target,
-             image_target=None):
+def cost_v2v(vertTable: jnp.array,
+             heTable: jnp.array,
+             faceTable: jnp.array,
+             vertTable_target: jnp.array):
 
     L_box = jnp.sqrt(len(faceTable))
 
     @jit
-    def squared_distance(v, 
-                         vertTable,
-                         vertTable_target):
+    def squared_distance(vertTable: jnp.array,
+                         vertTable_target: jnp.array,
+                         v: int):
         return (jnp.min(jnp.array([((vertTable[v][0] - vertTable_target[v][0]) ** 2 + (vertTable[v][1] - vertTable_target[v][1]) ** 2)**0.5,
                                    ((vertTable[v][0] - (vertTable_target[v][0] + L_box)) ** 2 + (vertTable[v][1] - vertTable_target[v][1]) ** 2)**0.5,
                                    ((vertTable[v][0] - (vertTable_target[v][0] - L_box)) ** 2 + (vertTable[v][1] - vertTable_target[v][1]) ** 2)**0.5,
@@ -139,26 +132,24 @@ def cost_v2v(vertTable,
                                    ((vertTable[v][0] - (vertTable_target[v][0] - L_box)) ** 2 + (vertTable[v][1] - (vertTable_target[v][1] + L_box)) ** 2)**0.5,
                                    ((vertTable[v][0] - (vertTable_target[v][0] - L_box)) ** 2 + (vertTable[v][1] - (vertTable_target[v][1] - L_box)) ** 2)**0.5])))**2
 
-    mapped_fn = lambda v: (squared_distance(v, vertTable, vertTable_target))
-    distances = vmap(mapped_fn)(selected_verts)
+    mapped_fn = lambda vec: (squared_distance(vertTable, vertTable_target, vec))
+    distances = vmap(mapped_fn)(jnp.arange(len(faceTable)))
+
     return (1./(2*len(distances))) * jnp.sum(distances)
 
 @jit
 def cost_mesh2image(vertTable: jnp.array,
                     heTable: jnp.array,
                     faceTable: jnp.array,
-                    selected_verts,
-                    selected_hes,
-                    selected_faces,
-                    vertTable_target,
-                    heTable_target,
-                    faceTable_target,
+                    verts_selected,
+                    hes_selected,
+                    faces_selected,
                     image_target):
 
     L_box = jnp.sqrt(len(faceTable))
 
-    starting = (vertTable[heTable[selected_hes, 3], :2]) * 2 / L_box  # (M, 2)
-    ending = (vertTable[heTable[selected_hes, 4], :2]) * 2 / L_box  # (M, 2)
+    starting = (vertTable[heTable[hes_selected, 3], :2]) * 2 / L_box  # (M, 2)
+    ending = (vertTable[heTable[hes_selected, 4], :2]) * 2 / L_box  # (M, 2)
 
     he_edges = stack((starting, ending), axis=1)  # (N, 2, 2)
     x = he_edges.transpose(1, 2, 0) - 1  # (2, 2, N)

@@ -33,34 +33,22 @@ def sum_edges(face,
     return res
 
 @jit
-def get_length(he, vertTable: jnp.array, heTable: jnp.array, L_box: float):
+def get_length(he, 
+               vertTable: jnp.array, 
+               heTable: jnp.array, 
+               L_box: float
+               ):
+
     v_source = heTable.at[he, 3].get()
     v_target = heTable.at[he, 4].get()
-
-    x0, y0 = vertTable.at[v_source, :2].get()  # source vertex
-    he_offset_x1 = heTable.at[he, 6].get() * L_box  # target offset
+    x0 = vertTable.at[v_source, 0].get()  # source
+    y0 = vertTable.at[v_source, 1].get()
+    he_offset_x1 = heTable.at[he, 6].get() * L_box  # offset target
     he_offset_y1 = heTable.at[he, 7].get() * L_box
-    x1, y1 = vertTable.at[v_target, :2].get() + jnp.array([he_offset_x1, he_offset_y1])  # target vertex
+    x1 = vertTable.at[v_target, 0].get() + he_offset_x1  # target
+    y1 = vertTable.at[v_target, 1].get() + he_offset_y1
 
-    length = jnp.hypot(x1 - x0, y1 - y0)  
-    return jnp.array([length, he_offset_x1, he_offset_y1])
-
-# def get_length(he, 
-#                vertTable: jnp.array, 
-#                heTable: jnp.array, 
-#                L_box: float
-#                ):
-
-#     v_source = heTable.at[he, 3].get()
-#     v_target = heTable.at[he, 4].get()
-#     x0 = vertTable.at[v_source, 0].get()  # source
-#     y0 = vertTable.at[v_source, 1].get()
-#     he_offset_x1 = heTable.at[he, 6].get() * L_box  # offset target
-#     he_offset_y1 = heTable.at[he, 7].get() * L_box
-#     x1 = vertTable.at[v_target, 0].get() + he_offset_x1  # target
-#     y1 = vertTable.at[v_target, 1].get() + he_offset_y1
-
-#     return jnp.array([jnp.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2), he_offset_x1, he_offset_y1])
+    return jnp.array([jnp.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2), he_offset_x1, he_offset_y1])
 
 @jit
 def get_perimeter(face, 
@@ -107,52 +95,54 @@ def get_area(face,
 
     return 0.5 * jnp.abs(sum_edges(face, heTable, faceTable, fun)[0])
 
-# select verts, hes, faces for faces with all verts inside L_box_inner 
-def select_verts_hes_faces(vertTable: jnp.array, 
-                           heTable: jnp.array, 
-                           faceTable: jnp.array,
-                           L_box_inner: float):
-    
+# selecting verts hes faces for which all points are inside the box
+def list_verts_hes_faces(vertTable: jnp.array, 
+                         heTable: jnp.array, 
+                         faceTable: jnp.array):
+
     L_box = jnp.sqrt(len(faceTable))
 
     selected_faces = []
     selected_hes = jnp.array([], dtype=int)
     selected_verts = jnp.array([], dtype=int)
-    
+
     for face in range(len(faceTable)):
+
         start_he = faceTable.at[face].get()
+
         he = start_he
+        v_source = heTable.at[he, 3].get()
         
-        hes_idxs = []
-        verts_idxs = []
-        all_inside = True  # flag to check if all vertices are inside L_box_inner
-        
-        while True:
+        hes_idxs = [he]
+        verts_idxs = [v_source]
+
+        offset_x = jnp.array([heTable.at[he, 6].get()])
+        offset_y = jnp.array([heTable.at[he, 7].get()])
+
+        he = heTable.at[he, 1].get()
+
+        while he != start_he:
             v_source = heTable.at[he, 3].get()
-            vert_x, vert_y = vertTable.at[v_source, 0].get(), vertTable.at[v_source, 1].get()
-            
-            # check if the vertex is outside the inner box
-            if not (((L_box - L_box_inner)/2.) <= vert_x <= ((L_box + L_box_inner)/2.) and ((L_box - L_box_inner)/2.) <= vert_y <= ((L_box + L_box_inner)/2.)):
-                all_inside = False
-                break
-            
+
             hes_idxs.append(he)
             verts_idxs.append(v_source)
-            
+
+            offset_x = jnp.concatenate((offset_x, jnp.array([heTable.at[he, 6].get()])))
+            offset_y = jnp.concatenate((offset_y, jnp.array([heTable.at[he, 7].get()])))
+
             he = heTable.at[he, 1].get()
-            if he == start_he:
-                break
         
-        if all_inside:
+        # Check if all offsets are zero
+        if jnp.all(offset_x == 0) and jnp.all(offset_y == 0):
             selected_faces.append(face)
             selected_hes = jnp.concatenate((selected_hes, jnp.array(hes_idxs)))
             selected_verts = jnp.concatenate((selected_verts, jnp.array(verts_idxs)))
-    
-    # unique elements in each array
+
+    # Ensure unique elements in each array
     selected_verts = jnp.unique(selected_verts)
     selected_hes = jnp.unique(selected_hes)
     selected_faces = jnp.unique(jnp.array(selected_faces))
-    
+
     return selected_verts, selected_hes, selected_faces
 
 # (only for id implementation)
@@ -233,17 +223,17 @@ def get_perimeter_area(face,
     return perimeter, area
 
 @jit
-def get_mean_shape_factor(vertTable: jnp.array, 
-                          heTable: jnp.array, 
-                          faceTable: jnp.array
-                          ):
+def get_shape_factor(vertTable: jnp.array, 
+                     heTable: jnp.array, 
+                     faceTable: jnp.array
+                     ):
 
     num_faces = len(faceTable)
     faces = jnp.arange(num_faces)
     mapped_fn = lambda face: get_perimeter_area(face, vertTable, heTable, faceTable)
     perimeters, areas = vmap(mapped_fn)(faces)
 
-    return (1./num_faces) * jnp.sum(perimeters/jnp.sqrt(areas)) 
+    return jnp.sum(perimeters) / jnp.sqrt(num_faces * jnp.sum(areas))
 
 @jit
 def update_he(he, 
@@ -299,3 +289,88 @@ def update_pbc(vertTable: jnp.array,
 
     return vertTable, heTable, faceTable
 
+# checking T1 transitions and (potentially) updating vertices positions and offsets for periodic boundary conditions
+# @jit
+def update_T1(vertTable: jnp.array, 
+              heTable: jnp.array, 
+              faceTable: jnp.array, 
+              MIN_DISTANCE: float
+              ):
+
+    ### C'È UN PROBLEMA QUANDO 2 LINK CONSECUTIVI DI UNA STESSA CELLULA VOGLIONO TRANSIRE T1 ###
+    ### FORSE FARE VARIABILI DI APPOGGIO E AGGIORNARE A OGNI ITERATA?                        ###
+
+    n_cells = len(faceTable)
+    L_box = jnp.sqrt(n_cells)
+    
+    heTable_new = heTable.copy()
+    faceTable_new = faceTable.copy()
+    vertTable_new = vertTable.copy()
+
+    for idx in range(len(heTable)):
+
+        he = heTable.at[idx].get()
+
+        v_idx_source = he[3]
+        v_idx_target = he[4]
+
+        v_pos_source = vertTable.at[v_idx_source].get()
+        v_pos_target = vertTable.at[v_idx_target].get()
+
+        v_offset_x_target = he[6] * L_box
+        v_offset_y_target = he[7] * L_box
+
+        v1 = jnp.hstack((v_pos_source[:-1], jnp.array([0, 0])))
+        v2 = jnp.hstack((v_pos_target[:-1], jnp.array([v_offset_x_target, v_offset_y_target])))
+
+        distance = get_length(idx, vertTable, heTable, L_box)[0]
+
+        if distance < MIN_DISTANCE:
+
+            x1 = v_pos_source.at[0].get()
+            y1 = v_pos_source.at[1].get()
+
+            # find the he's center
+            cx = ((v1.at[0].get() + v1.at[2].get()) + (v2.at[0].get() + v2.at[2].get())) / 2
+            cy = ((v1.at[1].get() + v1.at[3].get()) + (v2.at[1].get() + v2.at[3].get())) / 2
+
+            # rotate of 90 degrees counterclockwise
+            angle = -jnp.pi / 2.
+            x1_new = cx + jnp.cos(angle) * (x1 - cx) - jnp.sin(angle) * (y1 - cy)
+            y1_new = cy + jnp.sin(angle) * (x1 - cx) + jnp.cos(angle) * (y1 - cy)
+
+            # scale at larger size than minimal distance
+            x1 = (x1_new - cx) * (((MIN_DISTANCE + 10 ** (-3)) / 2.) / jnp.sqrt(((x1_new - cx) ** 2) + ((y1_new - cy) ** 2))) + cx
+            y1 = (y1_new - cy) * (((MIN_DISTANCE + 10 ** (-3)) / 2.) / jnp.sqrt(((x1_new - cx) ** 2) + ((y1_new - cy) ** 2))) + cy
+
+            he_prev = he[0]
+            heTable_new = heTable_new.at[he_prev, 1].set(he[1])  # change prev_he's next_he with he's next_he
+            heTable_new = heTable_new.at[he_prev, 4].set(v_idx_source)
+
+            he_prev_twin = heTable.at[he_prev, 2].get()
+            heTable_new = heTable_new.at[he_prev_twin, 0].set(he[2])  # idx  # change prev_twin_he's prev_he with he
+            heTable_new = heTable_new.at[he_prev_twin, 3].set(v_idx_source)
+
+            he_next = he[1]
+            heTable_new = heTable_new.at[he_next, 0].set(he[0])  # change next_he's prev_he with he's prev_he
+            heTable_new = heTable_new.at[he_next, 3].set(v_idx_source)  # change next_he's source_vertex with he's source_vertex
+
+            he_next_twin = heTable.at[he_next, 2].get()
+            heTable_new = heTable_new.at[he_next_twin, 1].set(idx)  # change next_twin_he's next_he with he's twin
+            heTable_new = heTable_new.at[he_next_twin, 4].set(v_idx_source)  # change next twin he's target vertex with he's source vertex
+
+            heTable_new = heTable_new.at[idx, 0].set(he_next_twin)
+            heTable_new = heTable_new.at[idx, 1].set(heTable.at[he_next_twin, 1].get())
+            heTable_new = heTable_new.at[idx, 5].set(heTable.at[he_next_twin, 5].get())
+
+            faceTable_new = faceTable_new.at[he[5]].set(he_next)
+            faceTable_new = faceTable_new.at[heTable_new[idx][5]].set(idx)
+
+            vertTable_new = vertTable_new.at[he[3], 0].set(x1)
+            vertTable_new = vertTable_new.at[he[3], 1].set(y1)
+            vertTable_new = vertTable_new.at[he[3], 2].set(he[1])
+
+        else:
+            pass
+
+    return vertTable_new, heTable_new, faceTable_new

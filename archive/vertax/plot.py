@@ -1,5 +1,3 @@
-import os
-
 import numpy as np
 
 import jax.numpy as jnp
@@ -93,9 +91,7 @@ def plot_geograph(vertTable, heTable, faceTable, L_box, flip_x=False, flip_y=Fal
     plt.gca().set_aspect('equal')
 
     if save:
-        os.makedirs(path, exist_ok=True)
-        plt.savefig(path + str(name) + '.svg', format='svg')
-        plt.savefig(path + str(name) + '.png', format='png')
+        plt.savefig(path + str(name) + '.png')
 
     if show:
         plt.show()

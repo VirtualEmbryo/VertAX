@@ -8,8 +8,7 @@ from jax import jit
 from vertax.geo import get_length, update_pbc
 from vertax.plot import plot_geograph
 
-
-@partial(jit, static_argnums=(9,))
+#@partial(jit, static_argnums=(9,))
 def update_T1(vertTable, 
               heTable, 
               faceTable, 
@@ -56,113 +55,131 @@ def update_T1(vertTable,
 
         def update_state(_state):
 
-            vertTable_new, heTable_new, faceTable_new = _state
+            # vertTable_new, heTable_new, faceTable_new = _state
 
-            ## heTable
-            # he
-            heTable_new = heTable_new.at[he_idx, 0].set(prev_twin_prev_he_idx)
-            heTable_new = heTable_new.at[he_idx, 1].set(twin_prev_he_idx)
-            heTable_new = heTable_new.at[he_idx, 5].set(twin_prev_he[5])
+            # ## heTable
+            # # he
+            # heTable_new = heTable_new.at[he_idx, 0].set(prev_twin_prev_he_idx)
+            # heTable_new = heTable_new.at[he_idx, 1].set(twin_prev_he_idx)
+            # heTable_new = heTable_new.at[he_idx, 5].set(twin_prev_he[5])
 
-            # twin he
-            heTable_new = heTable_new.at[twin_he_idx, 0].set(twin_next_he_idx)
-            heTable_new = heTable_new.at[twin_he_idx, 1].set(next_twin_next_he_idx)
-            heTable_new = heTable_new.at[twin_he_idx, 5].set(twin_next_he[5])
+            # # twin he
+            # heTable_new = heTable_new.at[twin_he_idx, 0].set(twin_next_he_idx)
+            # heTable_new = heTable_new.at[twin_he_idx, 1].set(next_twin_next_he_idx)
+            # heTable_new = heTable_new.at[twin_he_idx, 5].set(twin_next_he[5])
 
-            # prev he
-            heTable_new = heTable_new.at[prev_he_idx, 1].set(next_he_idx)
-            heTable_new = heTable_new.at[prev_he_idx, 4].set(he[4])
-            heTable_new = heTable_new.at[prev_he_idx, 6].add(he[6])
-            heTable_new = heTable_new.at[prev_he_idx, 7].add(he[7])
+            # # prev he
+            # heTable_new = heTable_new.at[prev_he_idx, 1].set(next_he_idx)
+            # heTable_new = heTable_new.at[prev_he_idx, 4].set(he[4])
+            # heTable_new = heTable_new.at[prev_he_idx, 6].add(he[6])
+            # heTable_new = heTable_new.at[prev_he_idx, 7].add(he[7])
             
-            # next he
-            heTable_new = heTable_new.at[next_he_idx, 0].set(prev_he_idx)
+            # # next he
+            # heTable_new = heTable_new.at[next_he_idx, 0].set(prev_he_idx)
 
-            # prev twin he
-            heTable_new = heTable_new.at[prev_twin_he_idx, 1].set(next_twin_he_idx)
-            heTable_new = heTable_new.at[prev_twin_he_idx, 4].set(twin_he[4])
-            heTable_new = heTable_new.at[prev_twin_he_idx, 6].add(twin_he[6])
-            heTable_new = heTable_new.at[prev_twin_he_idx, 7].add(twin_he[7])
+            # # prev twin he
+            # heTable_new = heTable_new.at[prev_twin_he_idx, 1].set(next_twin_he_idx)
+            # heTable_new = heTable_new.at[prev_twin_he_idx, 4].set(twin_he[4])
+            # heTable_new = heTable_new.at[prev_twin_he_idx, 6].add(twin_he[6])
+            # heTable_new = heTable_new.at[prev_twin_he_idx, 7].add(twin_he[7])
 
-            # next twin he
-            heTable_new = heTable_new.at[next_twin_he_idx, 0].set(prev_twin_he_idx)
+            # # next twin he
+            # heTable_new = heTable_new.at[next_twin_he_idx, 0].set(prev_twin_he_idx)
 
-            # prev twin prev he
-            heTable_new = heTable_new.at[prev_twin_prev_he_idx, 1].set(he_idx)
+            # # prev twin prev he
+            # heTable_new = heTable_new.at[prev_twin_prev_he_idx, 1].set(he_idx)
 
-            # twin prev he
-            heTable_new = heTable_new.at[twin_prev_he_idx, 0].set(he_idx)
-            heTable_new = heTable_new.at[twin_prev_he_idx, 3].set(he[4])
-            heTable_new = heTable_new.at[twin_prev_he_idx, 6].add(-he[6])
-            heTable_new = heTable_new.at[twin_prev_he_idx, 7].add(-he[7])
+            # # twin prev he
+            # heTable_new = heTable_new.at[twin_prev_he_idx, 0].set(he_idx)
+            # heTable_new = heTable_new.at[twin_prev_he_idx, 3].set(he[4])
+            # heTable_new = heTable_new.at[twin_prev_he_idx, 6].add(-he[6])
+            # heTable_new = heTable_new.at[twin_prev_he_idx, 7].add(-he[7])
 
-            # twin next he
-            heTable_new = heTable_new.at[twin_next_he_idx, 1].set(twin_he_idx)
+            # # twin next he
+            # heTable_new = heTable_new.at[twin_next_he_idx, 1].set(twin_he_idx)
 
-            # next twin next he
-            heTable_new = heTable_new.at[next_twin_next_he_idx, 0].set(twin_he_idx)
-            heTable_new = heTable_new.at[next_twin_next_he_idx, 3].set(twin_he[4])
-            heTable_new = heTable_new.at[next_twin_next_he_idx, 6].add(-twin_he[6])
-            heTable_new = heTable_new.at[next_twin_next_he_idx, 7].add(-twin_he[7])
+            # # next twin next he
+            # heTable_new = heTable_new.at[next_twin_next_he_idx, 0].set(twin_he_idx)
+            # heTable_new = heTable_new.at[next_twin_next_he_idx, 3].set(twin_he[4])
+            # heTable_new = heTable_new.at[next_twin_next_he_idx, 6].add(-twin_he[6])
+            # heTable_new = heTable_new.at[next_twin_next_he_idx, 7].add(-twin_he[7])
 
-            ## vertTable
-            vertTable_new = vertTable_new.at[he[3], 2].set(he_idx)
-            vertTable_new = vertTable_new.at[twin_he[3], 2].set(twin_he_idx)
+            # ## vertTable
+            # vertTable_new = vertTable_new.at[he[3], 2].set(he_idx)
+            # vertTable_new = vertTable_new.at[twin_he[3], 2].set(twin_he_idx)
 
-            # he
-            x_source_he = vertTable_new[he[3], 0]
-            y_source_he = vertTable_new[he[3], 1]
-            x_target_he = vertTable_new[he[4], 0]
-            y_target_he = vertTable_new[he[4], 1]
-            offset_x_target_he = heTable_new[he_idx, 6] * L_box
-            offset_y_target_he = heTable_new[he_idx, 7] * L_box
+            # # # he
+            # # x_source_he = vertTable_new[he[3], 0]
+            # # y_source_he = vertTable_new[he[3], 1]
+            # # x_target_he = vertTable_new[he[4], 0]
+            # # y_target_he = vertTable_new[he[4], 1]
+            # # offset_x_target_he = heTable_new[he_idx, 6] * L_box
+            # # offset_y_target_he = heTable_new[he_idx, 7] * L_box
 
-            center_x_he = ((x_source_he) + (x_target_he + offset_x_target_he)) / 2
-            center_y_he = ((y_source_he) + (y_target_he + offset_y_target_he)) / 2
-            angle = jnp.pi / 2.
-            turn_x_source_he = center_x_he + jnp.cos(angle) * (x_source_he - center_x_he) - jnp.sin(angle) * (y_source_he - center_y_he)
-            turn_y_source_he = center_y_he + jnp.sin(angle) * (x_source_he - center_x_he) + jnp.cos(angle) * (y_source_he - center_y_he)
-            scale_factor = ((min_distance + min_distance*0.1) / 2.0) / jnp.sqrt((turn_x_source_he - center_x_he) ** 2 + (turn_y_source_he - center_y_he) ** 2)
-            last_x_source_he = (turn_x_source_he - center_x_he) * scale_factor + center_x_he
-            last_y_source_he = (turn_y_source_he - center_y_he) * scale_factor + center_y_he
+            # # center_x_he = ((x_source_he) + (x_target_he + offset_x_target_he)) / 2
+            # # center_y_he = ((y_source_he) + (y_target_he + offset_y_target_he)) / 2
+            # # angle = jnp.pi / 2.
+            # # turn_x_source_he = center_x_he + jnp.cos(angle) * (x_source_he - center_x_he) - jnp.sin(angle) * (y_source_he - center_y_he)
+            # # turn_y_source_he = center_y_he + jnp.sin(angle) * (x_source_he - center_x_he) + jnp.cos(angle) * (y_source_he - center_y_he)
+            # # scale_factor = ((min_distance + min_distance*0.1) / 2.0) / jnp.sqrt((turn_x_source_he - center_x_he) ** 2 + (turn_y_source_he - center_y_he) ** 2)
+            # # last_x_source_he = (turn_x_source_he - center_x_he) * scale_factor + center_x_he
+            # # last_y_source_he = (turn_y_source_he - center_y_he) * scale_factor + center_y_he
 
-            # twin he
-            x_source_twin_he = vertTable_new[twin_he[3], 0]
-            y_source_twin_he = vertTable_new[twin_he[3], 1]
-            x_target_twin_he = vertTable_new[twin_he[4], 0]
-            y_target_twin_he = vertTable_new[twin_he[4], 1]
-            offset_x_target_twin_he = heTable_new[twin_he_idx, 6] * L_box
-            offset_y_target_twin_he = heTable_new[twin_he_idx, 7] * L_box
+            # # center_x_he = ((x_source_he) + (x_target_he + offset_x_target_he)) / 2
+            # # center_y_he = ((y_source_he) + (y_target_he + offset_y_target_he)) / 2
+            # # angle = jnp.pi / 2.
+            # # turn_x_target_he = center_x_he + jnp.cos(angle) * (x_target_he - center_x_he) - jnp.sin(angle) * (y_target_he - center_y_he)
+            # # turn_y_target_he = center_y_he + jnp.sin(angle) * (x_target_he - center_x_he) + jnp.cos(angle) * (y_target_he - center_y_he)
+            # # scale_factor = ((min_distance + min_distance*0.1) / 2.0) / jnp.sqrt((turn_x_target_he - center_x_he) ** 2 + (turn_y_target_he - center_y_he) ** 2)
+            # # last_x_target_he = (turn_x_target_he - center_x_he) * scale_factor + center_x_he
+            # # last_y_target_he = (turn_y_target_he - center_y_he) * scale_factor + center_y_he
 
-            center_x_twin_he = ((x_source_twin_he) + (x_target_twin_he + offset_x_target_twin_he)) / 2
-            center_y_twin_he = ((y_source_twin_he) + (y_target_twin_he + offset_y_target_twin_he)) / 2
-            angle = jnp.pi / 2.
-            turn_x_source_twin_he = center_x_twin_he + jnp.cos(angle) * (x_source_twin_he - center_x_twin_he) - jnp.sin(angle) * (y_source_twin_he - center_y_twin_he)
-            turn_y_source_twin_he = center_y_twin_he + jnp.sin(angle) * (x_source_twin_he - center_x_twin_he) + jnp.cos(angle) * (y_source_twin_he - center_y_twin_he)
-            scale_factor = ((min_distance + min_distance*0.1) / 2.0) / jnp.sqrt((turn_x_source_twin_he - center_x_twin_he) ** 2 + (turn_y_source_twin_he - center_y_twin_he) ** 2)
-            last_x_source_twin_he = (turn_x_source_twin_he - center_x_twin_he) * scale_factor + center_x_twin_he
-            last_y_source_twin_he = (turn_y_source_twin_he - center_y_twin_he) * scale_factor + center_y_twin_he
+            # # # twin he
+            # # x_source_twin_he = vertTable_new[twin_he[3], 0]
+            # # y_source_twin_he = vertTable_new[twin_he[3], 1]
+            # # x_target_twin_he = vertTable_new[twin_he[4], 0]
+            # # y_target_twin_he = vertTable_new[twin_he[4], 1]
+            # # offset_x_target_twin_he = heTable_new[twin_he_idx, 6] * L_box
+            # # offset_y_target_twin_he = heTable_new[twin_he_idx, 7] * L_box
 
-            vertTable_new = vertTable_new.at[he[3], 0].set(last_x_source_he)
-            vertTable_new = vertTable_new.at[he[3], 1].set(last_y_source_he)
-            vertTable_new = vertTable_new.at[he[4], 0].set(last_x_source_twin_he)
-            vertTable_new = vertTable_new.at[he[4], 1].set(last_y_source_twin_he)
+            # # center_x_twin_he = ((x_source_twin_he) + (x_target_twin_he + offset_x_target_twin_he)) / 2
+            # # center_y_twin_he = ((y_source_twin_he) + (y_target_twin_he + offset_y_target_twin_he)) / 2
+            # # angle = jnp.pi / 2.
+            # # turn_x_source_twin_he = center_x_twin_he + jnp.cos(angle) * (x_source_twin_he - center_x_twin_he) - jnp.sin(angle) * (y_source_twin_he - center_y_twin_he)
+            # # turn_y_source_twin_he = center_y_twin_he + jnp.sin(angle) * (x_source_twin_he - center_x_twin_he) + jnp.cos(angle) * (y_source_twin_he - center_y_twin_he)
+            # # scale_factor = ((min_distance + min_distance*0.1) / 2.0) / jnp.sqrt((turn_x_source_twin_he - center_x_twin_he) ** 2 + (turn_y_source_twin_he - center_y_twin_he) ** 2)
+            # # last_x_source_twin_he = (turn_x_source_twin_he - center_x_twin_he) * scale_factor + center_x_twin_he
+            # # last_y_source_twin_he = (turn_y_source_twin_he - center_y_twin_he) * scale_factor + center_y_twin_he
 
-            vertTable_new = vertTable_new.at[twin_he[3], 0].set(last_x_source_twin_he)
-            vertTable_new = vertTable_new.at[twin_he[3], 1].set(last_y_source_twin_he)
-            vertTable_new = vertTable_new.at[twin_he[4], 0].set(last_x_source_he)
-            vertTable_new = vertTable_new.at[twin_he[4], 1].set(last_y_source_he)
+            # # center_x_twin_he = ((x_source_twin_he) + (x_target_twin_he + offset_x_target_twin_he)) / 2
+            # # center_y_twin_he = ((y_source_twin_he) + (y_target_twin_he + offset_y_target_twin_he)) / 2
+            # # angle = jnp.pi / 2.
+            # # turn_x_target_twin_he = center_x_twin_he + jnp.cos(angle) * (x_target_twin_he - center_x_twin_he) - jnp.sin(angle) * (y_target_twin_he - center_y_twin_he)
+            # # turn_y_target_twin_he = center_y_twin_he + jnp.sin(angle) * (x_target_twin_he - center_x_twin_he) + jnp.cos(angle) * (y_target_twin_he - center_y_twin_he)
+            # # scale_factor = ((min_distance + min_distance*0.1) / 2.0) / jnp.sqrt((turn_x_target_twin_he - center_x_twin_he) ** 2 + (turn_y_target_twin_he - center_y_twin_he) ** 2)
+            # # last_x_target_twin_he = (turn_x_target_twin_he - center_x_twin_he) * scale_factor + center_x_twin_he
+            # # last_y_target_twin_he = (turn_y_target_twin_he - center_y_twin_he) * scale_factor + center_y_twin_he
 
-            ## faceTable
-            faceTable_new = faceTable_new.at[prev_he[5]].set(prev_he_idx)
-            faceTable_new = faceTable_new.at[twin_prev_he[5]].set(twin_prev_he_idx)
-            faceTable_new = faceTable_new.at[next_twin_he[5]].set(next_twin_he_idx)
-            faceTable_new = faceTable_new.at[twin_next_he[5]].set(twin_next_he_idx)
+            # # vertTable_new = vertTable_new.at[he[3], 0].set(last_x_source_he)
+            # # vertTable_new = vertTable_new.at[he[3], 1].set(last_y_source_he)
+            # # vertTable_new = vertTable_new.at[he[4], 0].set(last_x_target_he)
+            # # vertTable_new = vertTable_new.at[he[4], 1].set(last_y_target_he)
 
-            vertTable_new_T1, heTable_new_T1, faceTable_new_T1 = update_pbc(vertTable_new, heTable_new, faceTable_new)
+            # # vertTable_new = vertTable_new.at[twin_he[3], 0].set(last_x_source_twin_he)
+            # # vertTable_new = vertTable_new.at[twin_he[3], 1].set(last_y_source_twin_he)
+            # # vertTable_new = vertTable_new.at[twin_he[4], 0].set(last_x_target_twin_he)
+            # # vertTable_new = vertTable_new.at[twin_he[4], 1].set(last_y_target_twin_he)
 
-            # Compute final L_in after T1
-            L_in_T1 = L_in(vertTable_new_T1, heTable_new_T1, faceTable_new_T1, selected_verts, selected_hes, selected_faces, vert_params, he_params, face_params)
+            # ## faceTable
+            # faceTable_new = faceTable_new.at[prev_he[5]].set(prev_he_idx)
+            # faceTable_new = faceTable_new.at[twin_prev_he[5]].set(twin_prev_he_idx)
+            # faceTable_new = faceTable_new.at[next_twin_he[5]].set(next_twin_he_idx)
+            # faceTable_new = faceTable_new.at[twin_next_he[5]].set(twin_next_he_idx)
+
+            # vertTable_new_T1, heTable_new_T1, faceTable_new_T1 = update_pbc(vertTable_new, heTable_new, faceTable_new)
+
+            # # Compute final L_in after T1
+            # L_in_T1 = L_in(vertTable_new_T1, heTable_new_T1, faceTable_new_T1, selected_verts, selected_hes, selected_faces, vert_params, he_params, face_params)
 
             vertTable_new, heTable_new, faceTable_new = _state
 
@@ -176,12 +193,20 @@ def update_T1(vertTable,
 
             center_x_he = ((x_source_he) + (x_target_he + offset_x_target_he)) / 2
             center_y_he = ((y_source_he) + (y_target_he + offset_y_target_he)) / 2
+
+            jax.debug.print('{x}\t{y}', x=center_x_he, y=center_y_he)
             angle = 0.
             turn_x_source_he = center_x_he + jnp.cos(angle) * (x_source_he - center_x_he) - jnp.sin(angle) * (y_source_he - center_y_he)
             turn_y_source_he = center_y_he + jnp.sin(angle) * (x_source_he - center_x_he) + jnp.cos(angle) * (y_source_he - center_y_he)
             scale_factor = ((min_distance + min_distance*0.1) / 2.0) / jnp.sqrt((turn_x_source_he - center_x_he) ** 2 + (turn_y_source_he - center_y_he) ** 2)
             last_x_source_he = (turn_x_source_he - center_x_he) * scale_factor + center_x_he
             last_y_source_he = (turn_y_source_he - center_y_he) * scale_factor + center_y_he
+
+            # turn_x_target_he = center_x_he + jnp.cos(angle) * (x_target_he - center_x_he) - jnp.sin(angle) * (y_target_he - center_y_he)
+            # turn_y_target_he = center_y_he + jnp.sin(angle) * (x_target_he - center_x_he) + jnp.cos(angle) * (y_target_he - center_y_he)
+            # scale_factor = ((min_distance + min_distance*0.1) / 2.0) / jnp.sqrt((turn_x_target_he - center_x_he) ** 2 + (turn_y_target_he - center_y_he) ** 2)
+            # last_x_target_he = (turn_x_target_he - center_x_he) * scale_factor + center_x_he - offset_x_target_he
+            # last_y_target_he = (turn_y_target_he - center_y_he) * scale_factor + center_y_he - offset_y_target_he
 
             # twin he
             x_source_twin_he = vertTable_new[twin_he[3], 0]
@@ -193,12 +218,19 @@ def update_T1(vertTable,
 
             center_x_twin_he = ((x_source_twin_he) + (x_target_twin_he + offset_x_target_twin_he)) / 2
             center_y_twin_he = ((y_source_twin_he) + (y_target_twin_he + offset_y_target_twin_he)) / 2
+            jax.debug.print('{t}\t{r}', t=center_x_twin_he, r=center_y_twin_he)
             angle = 0.
             turn_x_source_twin_he = center_x_twin_he + jnp.cos(angle) * (x_source_twin_he - center_x_twin_he) - jnp.sin(angle) * (y_source_twin_he - center_y_twin_he)
             turn_y_source_twin_he = center_y_twin_he + jnp.sin(angle) * (x_source_twin_he - center_x_twin_he) + jnp.cos(angle) * (y_source_twin_he - center_y_twin_he)
             scale_factor = ((min_distance + min_distance*0.1) / 2.0) / jnp.sqrt((turn_x_source_twin_he - center_x_twin_he) ** 2 + (turn_y_source_twin_he - center_y_twin_he) ** 2)
             last_x_source_twin_he = (turn_x_source_twin_he - center_x_twin_he) * scale_factor + center_x_twin_he
             last_y_source_twin_he = (turn_y_source_twin_he - center_y_twin_he) * scale_factor + center_y_twin_he
+
+            # turn_x_target_twin_he = center_x_twin_he + jnp.cos(angle) * (x_target_twin_he - center_x_twin_he) - jnp.sin(angle) * (y_target_twin_he - center_y_twin_he)
+            # turn_y_target_twin_he = center_y_twin_he + jnp.sin(angle) * (x_target_twin_he - center_x_twin_he) + jnp.cos(angle) * (y_target_twin_he - center_y_twin_he)
+            # scale_factor = ((min_distance + min_distance*0.1) / 2.0) / jnp.sqrt((turn_x_target_twin_he - center_x_twin_he) ** 2 + (turn_y_target_twin_he - center_y_twin_he) ** 2)
+            # last_x_target_twin_he = (turn_x_target_twin_he - center_x_twin_he) * scale_factor + center_x_twin_he - offset_x_target_twin_he
+            # last_y_target_twin_he = (turn_y_target_twin_he - center_y_twin_he) * scale_factor + center_y_twin_he - offset_y_target_twin_he
 
             vertTable_new = vertTable_new.at[he[3], 0].set(last_x_source_he)
             vertTable_new = vertTable_new.at[he[3], 1].set(last_y_source_he)
@@ -209,19 +241,26 @@ def update_T1(vertTable,
             vertTable_new = vertTable_new.at[twin_he[3], 1].set(last_y_source_twin_he)
             vertTable_new = vertTable_new.at[twin_he[4], 0].set(last_x_source_he)
             vertTable_new = vertTable_new.at[twin_he[4], 1].set(last_y_source_he)
+
+            # jax.debug.print('\n{x}\t{y}', x=last_x_source_he, y=last_x_source_he)
+            # jax.debug.print('{x}\t{y}', x=last_x_target_he, y=last_x_target_he)
+            # jax.debug.print('{x}\t{y}', x=last_x_source_twin_he, y=last_x_source_twin_he)
+            # jax.debug.print('{x}\t{y}', x=last_x_target_twin_he, y=last_x_target_twin_he)
 
             vertTable_new_no_T1, heTable_new_no_T1, faceTable_new_no_T1 = update_pbc(vertTable_new, heTable_new, faceTable_new)
 
-            # Compute initial L_in
-            L_in_no_T1 = L_in(vertTable_new_no_T1, heTable_new_no_T1, faceTable_new_no_T1, selected_verts, selected_hes, selected_faces, vert_params, he_params, face_params)
+            # # Compute initial L_in
+            # L_in_no_T1 = L_in(vertTable_new_no_T1, heTable_new_no_T1, faceTable_new_no_T1, selected_verts, selected_hes, selected_faces, vert_params, he_params, face_params)
 
-            # Accept the update only if L_in_after < L_in_before
-            return jax.lax.cond(
-                L_in_T1 < L_in_no_T1,
-                lambda _: (vertTable_new_T1, heTable_new_T1, faceTable_new_T1),
-                lambda _: (vertTable_new_no_T1, heTable_new_no_T1, faceTable_new_no_T1),
-                None
-            )
+            # # Accept the update only if L_in_after < L_in_before
+            # return jax.lax.cond(
+            #     L_in_T1 < L_in_no_T1,
+            #     lambda _: (vertTable_new_T1, heTable_new_T1, faceTable_new_T1),
+            #     lambda _: (vertTable_new_no_T1, heTable_new_no_T1, faceTable_new_no_T1),
+            #     None
+            # )
+
+            return vertTable_new_no_T1, heTable_new_no_T1, faceTable_new_no_T1
 
         vertTable_new, heTable_new, faceTable_new = jax.lax.cond(
             (distance < min_distance) & should_update & twin_should_update,
