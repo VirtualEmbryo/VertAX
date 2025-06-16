@@ -1,11 +1,9 @@
 from functools import partial
 
-import jax
 import jax.numpy as jnp
-from jax import jit, vmap, jacfwd
+from jax import jit, vmap
 from jax.lax import while_loop
 
-import vertax
 
 @partial(jit, static_argnums=(3,))
 def sum_edges(face, 
@@ -35,8 +33,7 @@ def sum_edges(face,
     return res
 
 @jit
-def get_length(he, vertTable: jnp.array, heTable: jnp.array, faceTable: jnp.array):
-    L_box = jnp.sqrt(len(faceTable))
+def get_length(he, vertTable: jnp.array, heTable: jnp.array, L_box: float):
     v_source = heTable.at[he, 3].get()
     v_target = heTable.at[he, 4].get()
 
@@ -48,6 +45,23 @@ def get_length(he, vertTable: jnp.array, heTable: jnp.array, faceTable: jnp.arra
     length = jnp.hypot(x1 - x0, y1 - y0)  
     return jnp.array([length, he_offset_x1, he_offset_y1])
 
+# def get_length(he, 
+#                vertTable: jnp.array, 
+#                heTable: jnp.array, 
+#                L_box: float
+#                ):
+
+#     v_source = heTable.at[he, 3].get()
+#     v_target = heTable.at[he, 4].get()
+#     x0 = vertTable.at[v_source, 0].get()  # source
+#     y0 = vertTable.at[v_source, 1].get()
+#     he_offset_x1 = heTable.at[he, 6].get() * L_box  # offset target
+#     he_offset_y1 = heTable.at[he, 7].get() * L_box
+#     x1 = vertTable.at[v_target, 0].get() + he_offset_x1  # target
+#     y1 = vertTable.at[v_target, 1].get() + he_offset_y1
+
+#     return jnp.array([jnp.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2), he_offset_x1, he_offset_y1])
+
 @jit
 def get_perimeter(face, 
                   vertTable: jnp.array, 
@@ -56,7 +70,7 @@ def get_perimeter(face,
                   ):
 
     def fun(he, res):
-        return get_length(he, vertTable, heTable, faceTable)
+        return get_length(he, vertTable, heTable, jnp.sqrt(len(faceTable)))
 
     return sum_edges(face, heTable, faceTable, fun)[0]
 
@@ -119,55 +133,6 @@ def select_verts_hes_faces(vertTable: jnp.array,
             
             # check if the vertex is outside the inner box
             if not (((L_box - L_box_inner)/2.) <= vert_x <= ((L_box + L_box_inner)/2.) and ((L_box - L_box_inner)/2.) <= vert_y <= ((L_box + L_box_inner)/2.)):
-                all_inside = False
-                break
-            
-            hes_idxs.append(he)
-            verts_idxs.append(v_source)
-            
-            he = heTable.at[he, 1].get()
-            if he == start_he:
-                break
-        
-        if all_inside:
-            selected_faces.append(face)
-            selected_hes = jnp.concatenate((selected_hes, jnp.array(hes_idxs)))
-            selected_verts = jnp.concatenate((selected_verts, jnp.array(verts_idxs)))
-    
-    # unique elements in each array
-    selected_verts = jnp.unique(selected_verts)
-    selected_hes = jnp.unique(selected_hes)
-    selected_faces = jnp.unique(jnp.array(selected_faces))
-    
-    return selected_verts, selected_hes, selected_faces
-
-# select verts, hes, faces for faces with all verts inside a rectangle
-def select_verts_hes_faces_rectangle(vertTable, 
-                                    heTable, 
-                                    faceTable,
-                                    L_bottom,
-                                    L_top):
-    
-    L_x = jnp.sqrt(len(faceTable))
-
-    selected_faces = []
-    selected_hes = jnp.array([], dtype=int)
-    selected_verts = jnp.array([], dtype=int)
-    
-    for face in range(len(faceTable)):
-        start_he = faceTable.at[face].get()
-        he = start_he
-        
-        hes_idxs = []
-        verts_idxs = []
-        all_inside = True  # flag to check if all vertices are inside L_box_inner
-        
-        while True:
-            v_source = heTable.at[he, 3].get()
-            vert_x, vert_y = vertTable.at[v_source, 0].get(), vertTable.at[v_source, 1].get()
-            
-            # check if the vertex is outside the inner box
-            if not (((0.) <= vert_y <= (L_x)) and ((L_bottom) <= vert_x <= (L_top))):
                 all_inside = False
                 break
             
@@ -275,10 +240,10 @@ def get_mean_shape_factor(vertTable: jnp.array,
 
     num_faces = len(faceTable)
     faces = jnp.arange(num_faces)
-    mapped_fn = lambda face: get_perimeter(face, vertTable, heTable, faceTable)
-    perimeters = vmap(mapped_fn)(faces)
+    mapped_fn = lambda face: get_perimeter_area(face, vertTable, heTable, faceTable)
+    perimeters, areas = vmap(mapped_fn)(faces)
 
-    return (1./num_faces) * jnp.sum(perimeters) 
+    return (1./num_faces) * jnp.sum(perimeters/jnp.sqrt(areas)) 
 
 @jit
 def update_he(he, 
@@ -334,99 +299,3 @@ def update_pbc(vertTable: jnp.array,
 
     return vertTable, heTable, faceTable
 
-# lee edwards pbc for shear transformation 
-def lee_edwards_pbc(vertTable, 
-                    heTable, 
-                    faceTable, 
-                    gamma, 
-                    L_bottom,
-                    L_top):
-
-    L_x = jnp.sqrt(len(faceTable))  
-    rho = gamma * (L_top-L_bottom)  # shear transformation 
-
-    def body_fun(he, carry):
-        vertTable, moved_mask = carry
-        cond1 = (vertTable[heTable[he, 3], 0] > L_bottom) & (vertTable[heTable[he, 4], 0] + heTable[he, 6] * L_x < L_bottom)
-        cond2 = (vertTable[heTable[he, 3], 0] < L_top) & (vertTable[heTable[he, 4], 0] + heTable[he, 6] * L_x > L_top)
-
-        def update_cond1(vt, mask):
-            vt = vt.at[heTable[he, 4], 1].add(-rho)  # apply shear transformation 
-            mask = mask.at[heTable[he, 4]].set(True)
-            return vt, mask
-
-        def update_cond2(vt, mask):
-            vt = vt.at[heTable[he, 4], 1].add(+rho)  # apply shear transformation 
-            mask = mask.at[heTable[he, 4]].set(True)
-            return vt, mask
-
-        vertTable, moved_mask = jax.lax.cond(cond1, update_cond1, lambda vt, mask: (vt, mask), vertTable, moved_mask)
-        vertTable, moved_mask = jax.lax.cond(cond2, update_cond2, lambda vt, mask: (vt, mask), vertTable, moved_mask)
-
-        return vertTable, moved_mask
-
-    moved_mask = jnp.zeros(vertTable.shape[0], dtype=bool)
-    vertTable, moved_mask = jax.lax.fori_loop(0, heTable.shape[0], body_fun, (vertTable, moved_mask))
-
-    vertTable, heTable, faceTable = update_pbc(vertTable, heTable, faceTable)
-
-    unmoved_verts = jnp.where(~moved_mask)[0]  # vertices that have not been moved
-
-    return vertTable, heTable, faceTable, unmoved_verts
-
-# computing shear modulus as the second derivative of the energy with respect to the shear strain
-def get_shear_modulus(vertTable, 
-                      heTable, 
-                      faceTable, 
-                      selected_verts,
-                      selected_hes,
-                      selected_faces,
-                      vert_params,
-                      he_params,
-                      face_params,
-                      L_in, 
-                      solver, 
-                      min_dist_T1,
-                      iterations_max,
-                      tolerance,
-                      patience,
-                      L_bottom,
-                      L_top):
-
-    L_x = jnp.sqrt(len(faceTable))  
-
-    def get_energy(gamma):
-
-        vertTable_shear, heTable_shear, faceTable_shear, unmoved_verts = lee_edwards_pbc(vertTable, 
-                                                                                         heTable, 
-                                                                                         faceTable,  
-                                                                                         gamma, 
-                                                                                         L_bottom,
-                                                                                         L_top)
-
-        (vertTable_new, heTable_new, faceTable_new), _ = vertax.inner_optax(vertTable_shear, 
-                                                                        heTable_shear, 
-                                                                        faceTable_shear, 
-                                                                        unmoved_verts,
-                                                                        selected_hes,
-                                                                        selected_faces,
-                                                                        vert_params,
-                                                                        he_params,
-                                                                        face_params,
-                                                                        L_in, 
-                                                                        solver, 
-                                                                        min_dist_T1,
-                                                                        iterations_max,
-                                                                        tolerance,
-                                                                        patience)
-
-        selected_verts_new, selected_hes_new, selected_faces_new = select_verts_hes_faces_rectangle(vertTable, heTable, faceTable, L_bottom, L_top)
-        face_params_new = face_params[selected_faces_new]
-
-        energy_value = L_in(vertTable_new, heTable_new, faceTable_new, selected_verts_new, selected_hes_new, selected_faces_new, vert_params, he_params, face_params_new)
-
-        return energy_value
-    
-    shear_modulus = (jacfwd(jacfwd(get_energy))(0.))/((L_top-L_bottom)*(L_x))
-
-    return shear_modulus

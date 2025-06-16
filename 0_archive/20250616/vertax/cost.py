@@ -6,10 +6,6 @@ from jax.numpy import arange,array,diff,expand_dims,einsum,exp,int32,meshgrid,pi
 from jax.numpy import sinc as npsinc
 from jax.numpy.fft import ifft2
 
-from vertax.geo import get_area, get_perimeter
-
-# import matplotlib.pyplot as plt
-
 
 # Image size, larger than the cube [-1,1]² --> FFT produces artefacts otherwise
 s=array([-3,+3],dtype=float)
@@ -98,13 +94,7 @@ def sum_line_segment_fourier_transform(x):
     ####
     midx,difx=x.sum(axis=0)/2,diff(x,axis=0)[0]
     midx,difx=expand_dims(midx,(-1,-2)),expand_dims(difx,(-1,-2))
-    nonodifx=sqrt((difx**2).sum(axis=0))    # 1            no weight
-    # nonodifx=1/sqrt((difx**2).sum(axis=0))  # (1/x)**2     weight
-    # nonodifx*=exp(-nonodifx)                # exp(-x)      weight
-    #nonodifx=(difx**2).sum(axis=0)           # x            weight
-    # nonodifx=((difx**2).sum(axis=0))**2       # x**2         weight
-    # nonodifx*=exp(nonodifx)                 # exp(-x)      weight
-    return (nonodifx*exp(-1j*(midx*xiexpa).sum(axis=0))*sinc((xiexpa*difx).sum(axis=0)/2)).sum(axis=0)
+    return (sqrt((difx**2).sum(axis=0))*exp(-1j*(midx*xiexpa).sum(axis=0))*sinc((xiexpa*difx).sum(axis=0)/2)).sum(axis=0)
     ####
 
 @jit
@@ -151,8 +141,7 @@ def cost_v2v(vertTable,
 
     mapped_fn = lambda v: (squared_distance(v, vertTable, vertTable_target))
     distances = vmap(mapped_fn)(selected_verts)
-
-    return (1./(2*len(distances))) * jnp.sum(distances) 
+    return (1./(2*len(distances))) * jnp.sum(distances)
 
 @jit
 def cost_mesh2image(vertTable: jnp.array,
@@ -169,8 +158,7 @@ def cost_mesh2image(vertTable: jnp.array,
     L_box = jnp.sqrt(len(faceTable))
 
     starting = (vertTable[heTable[selected_hes, 3], :2]) * 2 / L_box  # (M, 2)
-    #ending = (vertTable[heTable[selected_hes, 4], :2]) * 2 / L_box  # (M, 2)
-    ending = (vertTable[heTable[selected_hes, 4], :2] + jnp.stack([heTable[selected_hes, 6], heTable[selected_hes, 7],], axis=-1) * L_box) * 2 / L_box
+    ending = (vertTable[heTable[selected_hes, 4], :2]) * 2 / L_box  # (M, 2)
 
     he_edges = stack((starting, ending), axis=1)  # (N, 2, 2)
     x = he_edges.transpose(1, 2, 0) - 1  # (2, 2, N)
@@ -178,40 +166,14 @@ def cost_mesh2image(vertTable: jnp.array,
     # Blur
     image=gaussian_blur_line_segments(x).real
     
-    # # Crop
-    # image = image[int(256/6):int(((256*2/6)*2)+(256/6)),int(256/6):int(((256*2/6)*2)+(256/6))]
-    # image_target = image_target[int(256/6):int(((256*2/6)*2)+(256/6)),int(256/6):int(((256*2/6)*2)+(256/6))]
-    
-    # image = image[85:169,85:169]
-    image = image[50:210, 50:210]
-    # image_target = image_target[85:169,85:169]
-    image_target = image_target[50:210, 50:210]
-
-    # plt.imshow(image_target, cmap='gray', alpha=1.)
-    # plt.imshow(image, cmap='hot', alpha=0.5)
-    # plt.show()
+    # Crop
+    image = image[int(256/6):int(((256*2/6)*2)+(256/6)),int(256/6):int(((256*2/6)*2)+(256/6))]
+    image_target = image_target[int(256/6):int(((256*2/6)*2)+(256/6)),int(256/6):int(((256*2/6)*2)+(256/6))]
 
     # Normalization
     image = image/image.sum()
     image_target = image_target/image_target.sum()
 
-    l2_norm = jnp.linalg.norm(jnp.sqrt(jnp.sum(((image - image_target) ** 2) * (1-image_target), axis=-1)).flatten())
+    l2_norm = jnp.linalg.norm(jnp.sqrt(jnp.sum((image - image_target) ** 2, axis=-1)).flatten())
 
-    return l2_norm 
-
-@jit
-def cost_areas(vertTable: jnp.array,
-                heTable: jnp.array,
-                faceTable: jnp.array,
-                selected_verts,
-                selected_hes,
-                selected_faces,
-                vertTable_target,
-                heTable_target,
-                faceTable_target,
-                image_target):
-    
-    mapped_fn = lambda f: (get_area(f, vertTable, heTable, faceTable) - get_area(f, vertTable_target, heTable_target, faceTable_target))**2 #+ \
-       #(get_perimeter(f, vertTable, heTable, faceTable) - get_perimeter(f, vertTable_target, heTable_target, faceTable_target))**2
-    difference = vmap(mapped_fn)(selected_faces)
-    return (1./len(difference)) * jnp.sum(difference)
+    return l2_norm

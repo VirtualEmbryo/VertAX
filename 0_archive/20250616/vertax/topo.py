@@ -46,7 +46,7 @@ def update_T1(vertTable,
         next_twin_next_he_idx = twin_next_he[1]
 
         # check distance
-        distance = get_length(he_idx, vertTable_new, heTable_new, faceTable_new)[0]
+        distance = get_length(he_idx, vertTable_new, heTable_new, L_box)[0]
         
         # check if the two faces that share the hes are triangles
         he_prev = he[0]
@@ -217,14 +217,14 @@ def update_T1(vertTable,
 
             # Accept the update only if L_in_after < L_in_before
             return jax.lax.cond(
-                L_in_T1 <= L_in_no_T1,
+                L_in_T1 < L_in_no_T1,
                 lambda _: (vertTable_new_T1, heTable_new_T1, faceTable_new_T1),
                 lambda _: (vertTable_new_no_T1, heTable_new_no_T1, faceTable_new_no_T1),
                 None
             )
 
         vertTable_new, heTable_new, faceTable_new = jax.lax.cond(
-            (distance <= min_distance) & should_update & twin_should_update,
+            (distance < min_distance) & should_update & twin_should_update,
             update_state,
             lambda _state: _state,
             (vertTable_new, heTable_new, faceTable_new)
@@ -242,7 +242,7 @@ def update_T1(vertTable,
     return vertTable_last, heTable_last, faceTable_last  
 
 
-### T1 WITHOUT CHECK ON THE ENERGY DECREASE
+### WORKING BUT WITHOUT CHECKING THE ENERGY DECREASE
 
 # @jit
 # def update_T1(vertTable: jnp.array, 
@@ -416,4 +416,3 @@ def update_T1(vertTable,
 #     vertTable_last, heTable_last, faceTable_last = jax.lax.fori_loop(0, len(heTable) // 2, lambda i, s: body_fun(2 * i, s), state)
 
 #     return vertTable_last, heTable_last, faceTable_last  
-
