@@ -1,5 +1,9 @@
 # Package imports
-from vertax.start import create_mesh_from_seeds 
+from time import perf_counter
+
+from numpy.testing import assert_allclose
+
+from vertax.start import create_mesh_from_seeds, load_mesh
 from vertax.geo import get_perimeter, get_area 
 from vertax.opt import minimize
 from vertax.plot import plot_mesh
@@ -7,6 +11,8 @@ import jax.numpy as jnp
 import jax.random
 from jax import jit, vmap 
 import optax
+
+t_start = perf_counter()
 
 # Settings
 n_cells = 100
@@ -49,8 +55,20 @@ vertTable, heTable, faceTable = create_mesh_from_seeds(seeds)
     iterations_max, tolerance, patience, 
     selected_verts=None, selected_hes=None, selected_faces=None, argnums=0)
 
-# Plotting/saving
-plot_mesh(
-    vertTable_eq, heTable_eq, faceTable_eq, 
-    L_box, multicolor=True, lines=True, vertices=False, 
-    path='./', name='energy_minimization', show=True, save=True)
+t_end = perf_counter()
+elapsed_times = t_end - t_start
+print(f"Test forward modelling took {elapsed_times:.2f} s.")
+
+# save_mesh("tests/reference_results_test_minimization/", vertTable_eq, heTable_eq, faceTable_eq)
+
+ref_vertices, ref_edges, ref_faces = load_mesh("tests/reference_results_test_minimization/")
+
+assert_allclose(vertTable_eq, ref_vertices, rtol=0.001)
+assert_allclose(heTable_eq, ref_edges, rtol=0.001)
+assert_allclose(faceTable_eq, ref_faces, rtol=0.001)
+
+# # Plotting/saving
+# plot_mesh(
+#     vertTable_eq, heTable_eq, faceTable_eq, 
+#     L_box, multicolor=True, lines=True, vertices=False, 
+#     path='./', name='energy_minimization', show=True, save=True)

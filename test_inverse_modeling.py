@@ -1,5 +1,9 @@
 # Package imports
-from vertax.start import create_mesh_from_seeds
+from time import perf_counter
+
+from numpy.testing import assert_allclose
+
+from vertax.start import create_mesh_from_seeds, load_mesh
 from vertax.geo import get_area , get_length 
 from vertax.cost import cost_v2v
 from vertax.opt import inner_opt, bilevel_opt
@@ -8,6 +12,8 @@ import jax.numpy as jnp
 import jax.random
 from jax import jit , vmap 
 import optax
+
+t_start = perf_counter()
 
 # Settings
 n_cells = 20
@@ -23,7 +29,7 @@ adam = optax.adam(learning_rate=0.0001, nesterov=True)
 iterations_max = 1000
 tolerance = 1e-4
 patience = 5
-epochs = 5000
+epochs = 2
 
 # Energy function
 @jit
@@ -129,7 +135,7 @@ for j in range(epochs+1):
         L_in=energy, L_out=cost_v2v, solver_inner=sgd, solver_outer=adam, 
         min_dist_T1=min_dist_T1, iterations_max=iterations_max, tolerance=tolerance, patience=patience,
         selected_verts=None, selected_hes=None, selected_faces=None, 
-        image_target=None, beta=None, method='as'   # change to 'ep', 'id', 'as' 
+        image_target=None, beta=None, method='ad'   # change to 'ep', 'id', 'as' 
         ) 
     
     if j % 100 == 0:
@@ -139,3 +145,13 @@ for j in range(epochs+1):
         L_box, multicolor=True, lines=True, vertices=False, 
         path='./', name='bilevel_result_'+str(j), show=False, save=True
         )
+
+t_end = perf_counter()
+elapsed_times = t_end - t_start
+print(f"Test forward modelling took {elapsed_times:.2f} s.")
+
+ref_vertices, ref_edges, ref_faces = load_mesh("tests/reference_results_test_inverse_modeling/")
+
+assert_allclose(vertTable, ref_vertices, rtol=0.001)
+assert_allclose(heTable, ref_edges, rtol=0.001)
+assert_allclose(faceTable, ref_faces, rtol=0.001)
