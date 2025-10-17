@@ -132,5 +132,8 @@
     addopts        = ["-ra", "--showlocals", "--strict-markers", "--strict-config"]
     xfail_strict   = true
     filterwarnings = ["error"]
-    log_cli_level  = "info"
+    log_cli_level  = "INFO"
     testpaths      = ["tests"]
+
+[dependency-groups]
+    dev = ["pytest>=8.4.2"]
