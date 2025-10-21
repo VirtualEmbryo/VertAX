@@ -1,28 +1,57 @@
-import os
+"""Module for mesh creation, from given seeds or an image."""
+
+from pathlib import Path
 
 import jax.numpy as jnp
-import matplotlib.cm as cm
-import matplotlib.pyplot as plt
 import numpy as np
 import tifffile as tiff
+from jax import Array
+from numpy.typing import NDArray
 from scipy.ndimage import distance_transform_edt, gaussian_filter
 from scipy.spatial import Voronoi
 
-from vertax.plot import plot_mesh
+
+def load_mesh(path: str) -> tuple[Array, Array, Array]:
+    """Load a mesh from a file.
+
+    Args:
+        path (str): Path to the mesh file.
+
+    Returns:
+        tuple[Array, Array, Array]: Jax arrays of vertices (2D, float), edges and faces.
+    """
+    mesh_file = np.load(path)
+    return (jnp.array(mesh_file["vertices"]), jnp.array(mesh_file["edges"]), jnp.array(mesh_file["faces"]))
+    # return jnp.load(path + "vertTable.npy"), jnp.load(path + "heTable.npy"), jnp.load(path + "faceTable.npy")
 
 
-def load_mesh(path: str):
-    return jnp.load(path + "vertTable.npy"), jnp.load(path + "heTable.npy"), jnp.load(path + "faceTable.npy")
+def save_mesh(path: str, vertTable: Array, heTable: Array, faceTable: Array) -> None:
+    """Save a mesh to a file.
+
+    Args:
+        path (str): Path to the saved file.
+        vertTable (Array): The vertices of the mesh.
+        heTable (Array): The half-edges of the mesh.
+        faceTable (Array): The faces of the mesh.
+    """
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(path, allow_pickle=False, vertices=vertTable, edges=heTable, faces=faceTable)
+    # jnp.save(path + "vertTable", vertTable)
+    # jnp.save(path + "heTable", heTable)
+    # jnp.save(path + "faceTable", faceTable)
 
 
-def save_mesh(path: str, vertTable: jnp.array, heTable: jnp.array, faceTable: jnp.array):
-    os.makedirs(path, exist_ok=True)
-    jnp.save(path + "vertTable", vertTable)
-    jnp.save(path + "heTable", heTable)
-    jnp.save(path + "faceTable", faceTable)
+def create_mesh_from_seeds(seeds: Array) -> tuple[Array, Array, Array]:  # noqa: C901
+    """Create a Periodic Voronoi Mesh from a list of seeds.
 
+    The result is given in a Half-Edge structure.
 
-def create_mesh_from_seeds(seeds: jnp.array, path: str = "./", show: bool = False):
+    Args:
+        seeds (Array): 2D float jax array of seed positions.
+
+    Returns:
+        tuple[Array, Array, Array]: The vertices, half-edges and faces table of the mesh.
+    """
     n_cells = len(seeds)
     L_box = np.sqrt(n_cells)
 
@@ -175,11 +204,7 @@ def create_mesh_from_seeds(seeds: jnp.array, path: str = "./", show: bool = Fals
     # Finding clockwise (or counterclockwise) half edge set for each face
     ordered_edges_periodic_voronoi_faces = []
     for face in periodic_voronoi_faces:
-        edges_face = []
-        for f1 in face:
-            for f2 in face:
-                if (f1, f2) in periodic_voronoi_edges:
-                    edges_face.append((f1, f2))
+        edges_face = [(f1, f2) for f1 in face for f2 in face if (f1, f2) in periodic_voronoi_edges]
         i = 0
         start_edge = edges_face[i]
         ordered_face = [start_edge]
@@ -236,9 +261,7 @@ def create_mesh_from_seeds(seeds: jnp.array, path: str = "./", show: bool = Fals
         if order < 0:
             ordered_edges_periodic_voronoi_faces.append(ordered_face)
         if order > 0:
-            new_ordered_face = []
-            for e in reversed(ordered_face):
-                new_ordered_face.append((e[1], e[0]))
+            new_ordered_face = [(e[1], e[0]) for e in reversed(ordered_face)]
             ordered_edges_periodic_voronoi_faces.append(new_ordered_face)
         if order == 0:
             print("\nError: no order detected for face " + str(face) + "\n")
@@ -247,16 +270,12 @@ def create_mesh_from_seeds(seeds: jnp.array, path: str = "./", show: bool = Fals
     # VERT FACE HE TABLES
 
     vertTable = np.zeros((len(periodic_voronoi_vertices_idx), 3))
-    for i, (idx, pos) in enumerate(zip(periodic_voronoi_vertices_idx, periodic_voronoi_vertices_pos, strict=False)):
-        for j, he in enumerate(periodic_voronoi_half_edges):
-            if idx == he[0]:
-                idx_selected_he = j
-                break
+    for i, (_, pos) in enumerate(zip(periodic_voronoi_vertices_idx, periodic_voronoi_vertices_pos, strict=False)):
         vertTable[i][0] = pos[0]  # x pos vert
         vertTable[i][1] = pos[1]  # y pos vert
         # vertTable[i][2] = idx_selected_he  # he vert source (random among three)
 
-    faceTable = np.zeros((len(periodic_voronoi_faces), 1))
+    faceTable = np.zeros(len(periodic_voronoi_faces))
     for i, hedges_face in enumerate(ordered_edges_periodic_voronoi_faces):
         for j, he in enumerate(periodic_voronoi_half_edges):
             if he == hedges_face[0]:
@@ -277,49 +296,14 @@ def create_mesh_from_seeds(seeds: jnp.array, path: str = "./", show: bool = Fals
         heTable[i][6] = offsets[he][0]  # he_offset x vert target
         heTable[i][7] = offsets[he][1]  # he_offset y vert target
 
-    os.makedirs(path + "simulation_init", exist_ok=True)
-
-    np.savetxt(path + "simulation_init/vertTable.csv", vertTable, delimiter="\t", fmt="%1.18f")
-    np.savetxt(path + "simulation_init/faceTable.csv", faceTable, delimiter="\t", fmt="%1.0d")
-    np.savetxt(path + "simulation_init/heTable.csv", heTable, delimiter="\t", fmt="%1.0d")
-
-    vertTable = np.loadtxt(path + "simulation_init/vertTable.csv", delimiter="\t", dtype=np.float64)
-    faceTable = np.loadtxt(path + "simulation_init/faceTable.csv", delimiter="\t", dtype=np.int32)
-    heTable = np.loadtxt(path + "simulation_init/heTable.csv", delimiter="\t", dtype=np.int32)
-
-    np.save(path + "simulation_init/vertTable", vertTable)
-    np.save(path + "simulation_init/faceTable", faceTable)
-    np.save(path + "simulation_init/heTable", heTable)
-
-    # os.remove(path + 'simulation_init/vertTable.csv')
-    # os.remove(path + 'simulation_init/faceTable.csv')
-    # os.remove(path + 'simulation_init/heTable.csv')
-
-    if show:
-        plot_mesh(
-            vertTable.astype(float),
-            heTable.astype(int),
-            faceTable.astype(int),
-            L_box=L_box,
-            flip_x=False,
-            flip_y=False,
-            multicolor=True,
-            lines=True,
-            vertices=False,
-            path=path + "simulation_init/",
-            name="simulation_init",
-            save=True,
-            show=True,
-        )
-
     return (
-        jnp.load(path + "simulation_init/vertTable.npy"),
-        jnp.load(path + "simulation_init/heTable.npy"),
-        jnp.load(path + "simulation_init/faceTable.npy"),
+        jnp.array(vertTable, dtype=np.float32),
+        jnp.array(heTable, dtype=np.int32),
+        jnp.array(faceTable, dtype=np.int32),
     )
 
 
-def create_mesh_from_image(image: np.array, path: str = "./", show: bool = False):
+def create_mesh_from_image(image: NDArray, path: str = "./") -> tuple[Array, Array, Array]:  # noqa: C901
     def segment(image):
         from cellpose import models
 
@@ -330,7 +314,7 @@ def create_mesh_from_image(image: np.array, path: str = "./", show: bool = False
         blurred_image = gaussian_filter(image, sigma=10)
         # Segment the image using Cellpose's `cyto` model
         model = models.Cellpose(model_type="cyto", gpu=True)
-        mask, flows, styles, diams = model.eval(blurred_image, channels=[0, 0], diameter=None)
+        mask, _, _, _ = model.eval(blurred_image, channels=[0, 0], diameter=None)  # type: ignore
         # Save the resulting image
         output_path = path + "segmented_image.tiff"
         tiff.imwrite(output_path, mask.astype(np.uint16), imagej=True)
@@ -397,12 +381,11 @@ def create_mesh_from_image(image: np.array, path: str = "./", show: bool = False
             for idx2, labels2 in list(junction_labels.items())[i + 1 :]:
                 # Check if they share exactly two labels
                 shared_labels = set(labels1).intersection(set(labels2))
-                if len(shared_labels) == 2:
+                if len(shared_labels) == 2 and connections[idx1] < 3 and connections[idx2] < 3:
                     # Ensure neither point exceeds 3 connections
-                    if connections[idx1] < 3 and connections[idx2] < 3:
-                        edges.append([idx1, idx2])
-                        connections[idx1] += 1
-                        connections[idx2] += 1
+                    edges.append([idx1, idx2])
+                    connections[idx1] += 1
+                    connections[idx2] += 1
         # Find faces as sets of three-junctions sharing a unique label
         faces = []
         for label_i in np.unique(mask):
@@ -552,12 +535,8 @@ def create_mesh_from_image(image: np.array, path: str = "./", show: bool = False
 
     # Finding clockwise (or counterclockwise) half edge set for each face
     ordered_edges_periodic_voronoi_faces = []
-    for j, face in enumerate(periodic_voronoi_faces):
-        edges_face = []
-        for f1 in face:
-            for f2 in face:
-                if (f1, f2) in periodic_voronoi_edges:
-                    edges_face.append((f1, f2))
+    for face in periodic_voronoi_faces:
+        edges_face = [(f1, f2) for f1 in face for f2 in face if (f1, f2) in periodic_voronoi_edges]
         i = 0
         start_edge = edges_face[i]
         ordered_face = [start_edge]
@@ -608,9 +587,7 @@ def create_mesh_from_image(image: np.array, path: str = "./", show: bool = False
         if order < 0:
             ordered_edges_periodic_voronoi_faces.append(ordered_face)
         if order > 0:
-            new_ordered_face = []
-            for e in reversed(ordered_face):
-                new_ordered_face.append((e[1], e[0]))
+            new_ordered_face = [(e[1], e[0]) for e in reversed(ordered_face)]
             ordered_edges_periodic_voronoi_faces.append(new_ordered_face)
         if order == 0:
             print("\nError: no order detected for face " + str(face) + "\n")
@@ -622,13 +599,12 @@ def create_mesh_from_image(image: np.array, path: str = "./", show: bool = False
     for i, (idx, pos) in enumerate(zip(periodic_voronoi_vertices_idx, periodic_voronoi_vertices_pos, strict=False)):
         for j, he in enumerate(periodic_voronoi_half_edges):
             if idx == he[0]:
-                idx_selected_he = j
                 break
         vertTable[i][0] = pos[0] - L_min  # y pos vert
         vertTable[i][1] = pos[1] - L_min  # x pos vert
         # vertTable[i][2] = idx_selected_he  # he vert source (random among three)
 
-    faceTable = np.zeros((len(periodic_voronoi_faces), 1))
+    faceTable = np.zeros(len(periodic_voronoi_faces))
     for i, hedges_face in enumerate(ordered_edges_periodic_voronoi_faces):
         for j, he in enumerate(periodic_voronoi_half_edges):
             if he == hedges_face[0]:
@@ -649,80 +625,8 @@ def create_mesh_from_image(image: np.array, path: str = "./", show: bool = False
         heTable[i][6] = offsets[he][0]  # he_offset x vert target
         heTable[i][7] = offsets[he][1]  # he_offset y vert target
 
-    os.makedirs(path + "simulation_init/", exist_ok=True)
-
-    np.savetxt(path + "simulation_init/vertTable.csv", vertTable, delimiter="\t", fmt="%1.18f")
-    np.savetxt(path + "simulation_init/faceTable.csv", faceTable, delimiter="\t", fmt="%1.0d")
-    np.savetxt(path + "simulation_init/heTable.csv", heTable, delimiter="\t", fmt="%1.0d")
-
-    vertTable = np.loadtxt(path + "simulation_init/vertTable.csv", delimiter="\t", dtype=np.float64)
-    faceTable = np.loadtxt(path + "simulation_init/faceTable.csv", delimiter="\t", dtype=np.int32)
-    heTable = np.loadtxt(path + "simulation_init/heTable.csv", delimiter="\t", dtype=np.int32)
-
-    np.save(path + "simulation_init/vertTable", vertTable)
-    np.save(path + "simulation_init/faceTable", faceTable)
-    np.save(path + "simulation_init/heTable", heTable)
-
-    # os.remove(path + 'simulation_init/vertTable.csv')
-    # os.remove(path + 'simulation_init/faceTable.csv')
-    # os.remove(path + 'simulation_init/heTable.csv')
-
-    if show:
-        # Define a gradient colormap (e.g., 'viridis')
-        cmap = cm.viridis
-        # Normalize the labels for gradient mapping (excluding label 0)
-        norm = plt.Normalize(vmin=1, vmax=np.max(input_image))
-        # Create the figure
-        plt.figure(figsize=(6, 6))
-        # Plot the refined and padded image
-        plt.imshow(input_image, cmap=cmap, norm=norm, interpolation="nearest")
-        # Define the extent to center the small image
-        center_x, center_y = input_image.shape[1] // 2, input_image.shape[0] // 2
-        half_size = image.shape[0] // 2
-        extent = [center_x - half_size, center_x + half_size, center_y + half_size, center_y - half_size]
-        # Plot the image with alpha=0.5 in the middle
-        plt.imshow(image, cmap="gray", extent=extent, alpha=1)
-        # Plot three-junction points
-        for idx, junction in enumerate(vertices):
-            plt.plot(junction[1], junction[0], "ro", label="Three-junction" if idx == 0 else "")
-        # Plot edges
-        for idx, edge in enumerate(edges):
-            pt1 = vertices[edge[0]]
-            pt2 = vertices[edge[1]]
-            plt.plot([pt1[1], pt2[1]], [pt1[0], pt2[0]], "r-", linewidth=2, label="Edge" if idx == 0 else "")
-        # Add a black-bordered box centered in the image
-        box_size = 2048
-        center_x, center_y = input_image.shape[0] // 2, input_image.shape[1] // 2
-        half_box = box_size // 2
-        top_left = (center_x - half_box, center_y - half_box)
-        bottom_right = (center_x + half_box, center_y + half_box)
-        # Plot the box
-        plt.plot(
-            [top_left[1], bottom_right[1], bottom_right[1], top_left[1], top_left[1]],
-            [top_left[0], top_left[0], bottom_right[0], bottom_right[0], top_left[0]],
-            "k-",
-            linewidth=2,
-        )
-        plt.show()
-
-        plot_mesh(
-            vertTable.astype(float),
-            heTable.astype(int),
-            faceTable.astype(int),
-            L_box=(2 * L_box),
-            flip_x=False,
-            flip_y=True,
-            multicolor=True,
-            lines=True,
-            vertices=False,
-            path=path + "simulation_init/",
-            name="simulation_init",
-            save=True,
-            show=True,
-        )
-
     return (
-        jnp.load(path + "simulation_init/vertTable.npy"),
-        jnp.load(path + "simulation_init/heTable.npy"),
-        jnp.load(path + "simulation_init/faceTable.npy"),
+        jnp.array(vertTable, dtype=np.float32),
+        jnp.array(heTable, dtype=np.int32),
+        jnp.array(faceTable, dtype=np.int32),
     )

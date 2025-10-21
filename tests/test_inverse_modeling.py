@@ -27,8 +27,8 @@ def test_inverse_modeling_for_regressions() -> None:
     std_areas = 0.0
 
     # Solvers
-    sgd = optax.sgd(learning_rate=0.01)
-    adam = optax.adam(learning_rate=0.0001, nesterov=True)
+    sgd = optax.sgd(learning_rate=0.01)  # inner solver
+    adam = optax.adam(learning_rate=0.0001, nesterov=True)  # outer solver
     iterations_max = 1000
     tolerance = 1e-4
     patience = 5
@@ -214,7 +214,7 @@ def test_inverse_modeling_for_regressions() -> None:
     elapsed_times = t_end - t_start
     print(f"Test forward modelling took {elapsed_times:.2f} s.")
 
-    ref_vertices, ref_edges, ref_faces = load_mesh("tests/reference_results_test_inverse_modeling/")
+    ref_vertices, ref_edges, ref_faces = load_mesh("tests/reference_result_test_inverse_modeling.npz")
 
     assert_allclose(vertTable, ref_vertices, rtol=0.001)
     assert_allclose(heTable, ref_edges, rtol=0.001)

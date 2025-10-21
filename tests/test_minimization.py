@@ -8,7 +8,7 @@ from jax import jit, vmap
 from numpy.testing import assert_allclose
 
 from vertax.geo import get_area, get_perimeter
-from vertax.opt import minimize, OptimizationTarget
+from vertax.opt import OptimizationTarget, minimize
 from vertax.start import create_mesh_from_seeds, load_mesh
 
 
@@ -75,7 +75,7 @@ def test_minimization_for_regressions() -> None:
 
     # save_mesh("tests/reference_results_test_minimization/", vertTable_eq, heTable_eq, faceTable_eq)
 
-    ref_vertices, ref_edges, ref_faces = load_mesh("tests/reference_results_test_minimization/")
+    ref_vertices, ref_edges, ref_faces = load_mesh("tests/reference_result_test_minimization.npz")
 
     assert_allclose(vertTable_eq, ref_vertices, rtol=0.001)
     assert_allclose(heTable_eq, ref_edges, rtol=0.001)

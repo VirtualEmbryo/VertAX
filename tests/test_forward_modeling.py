@@ -69,7 +69,7 @@ def test_forward_modeling_for_regressions() -> None:
     elapsed_times = t_end - t_start
     print(f"Test forward modelling took {elapsed_times:.2f} s.")
 
-    ref_vertices, ref_edges, ref_faces = load_mesh("tests/reference_results_test_forward_modeling/")
+    ref_vertices, ref_edges, ref_faces = load_mesh("tests/reference_result_test_forward_modeling.npz")
 
     assert_allclose(vertTable_eq, ref_vertices, rtol=0.001)
     assert_allclose(heTable_eq, ref_edges, rtol=0.001)
