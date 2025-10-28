@@ -51,21 +51,20 @@ class PBCMesh(Mesh):
         )
 
     @classmethod
-    def periodic_voronoi_from_random_seeds(cls, nb_seeds: int, random_key: int) -> Self:
+    def periodic_voronoi_from_random_seeds(cls, nb_seeds: int, width: float, height: float, random_key: int) -> Self:
         """Create a Periodic Voronoi Mesh from random seeds.
 
         Args:
             nb_seeds (int): Number of random seeds to use.
+            width (float): Width of the rectangular domains the seeds will be in.
+            height (float): Height of the rectangular domains the seeds will be in.
             random_key (int): Set the random key for reproducibility.
 
         Returns:
             Self: The corresponding mesh.
         """
-        L_box = jnp.sqrt(nb_seeds)
-        width = float(L_box)
-        height = float(L_box)
         key = jax.random.PRNGKey(random_key)
-        seeds = L_box * jax.random.uniform(key, (nb_seeds, 2))
+        seeds = jnp.array((width, height)) * jax.random.uniform(key, (nb_seeds, 2))
         return cls._periodic_voronoi_from_seeds(seeds, width, height)
 
     @classmethod

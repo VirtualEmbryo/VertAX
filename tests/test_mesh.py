@@ -31,10 +31,12 @@ def test_compare_pbc_mesh_with_create_mesh_from_seeds() -> None:
     n_cells = 100
     key = jax.random.PRNGKey(1)
     L_box = jnp.sqrt(n_cells)
+    width = float(L_box)
+    height = float(L_box)
     seeds = L_box * jax.random.uniform(key, (n_cells, 2))
     vertTable, heTable, faceTable = create_mesh_from_seeds(seeds)
 
-    my_mesh = PBCMesh.periodic_voronoi_from_random_seeds(n_cells, random_key=1)
+    my_mesh = PBCMesh.periodic_voronoi_from_random_seeds(n_cells, width, height, random_key=1)
 
     assert_array_equal(my_mesh.vertices, vertTable)
     assert_array_equal(my_mesh.edges, heTable)

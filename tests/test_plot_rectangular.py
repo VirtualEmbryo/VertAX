@@ -1,5 +1,6 @@
 """Manual check that a rectangular plot is working."""
 
+from jax._src.random import KeyArray
 import jax.numpy as jnp
 import jax.random
 
@@ -15,9 +16,7 @@ def show_rectangular_mesh() -> None:
     height = 10
 
     # Initial condition
-    key = jax.random.PRNGKey(1)
-    seeds = jnp.array((width, height)) * jax.random.uniform(key, (n_cells, 2))
-    mesh = PBCMesh._periodic_voronoi_from_seeds(seeds, width, height)
+    mesh = PBCMesh.periodic_voronoi_from_random_seeds(n_cells, width, height, random_key=1)
 
     plot_mesh(
         mesh.vertices,
