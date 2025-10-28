@@ -80,16 +80,16 @@ class PBCMesh(Mesh):
             height (float): height of the box containing the seeds.
         """
         (
-            L_box,
             periodic_voronoi_vertices_idx,
             periodic_voronoi_vertices_pos,
             periodic_voronoi_edges,
             offsets,
             periodic_voronoi_faces,
-        ) = _make_periodic(seeds)
+        ) = _make_periodic(seeds, width, height)
 
         vertices, edges, faces = _make_he_structure(
-            L_box,
+            width,
+            height,
             periodic_voronoi_vertices_idx,
             periodic_voronoi_vertices_pos,
             periodic_voronoi_edges,
@@ -438,8 +438,9 @@ class PBCMesh(Mesh):
 
 def _make_periodic(  # noqa: C901
     seeds: Array,
+    width: float,
+    height: float,
 ) -> tuple[
-    float,
     NDArray[np.int32],
     NDArray[np.float64],
     list[tuple[int, int]],
@@ -447,7 +448,6 @@ def _make_periodic(  # noqa: C901
     list[set[int]],
 ]:
     n_cells = len(seeds)
-    L_box: float = np.sqrt(n_cells)
 
     # PERIODIC VORONOI - VERTICES EDGES FACES
 
@@ -458,14 +458,14 @@ def _make_periodic(  # noqa: C901
     padded_seeds = np.concatenate(
         (
             seeds,
-            np.add(seeds, np.full((n_cells, 2), [-L_box, +L_box])),
-            np.add(seeds, np.full((n_cells, 2), [0, +L_box])),
-            np.add(seeds, np.full((n_cells, 2), [L_box, +L_box])),
-            np.add(seeds, np.full((n_cells, 2), [-L_box, 0])),
-            np.add(seeds, np.full((n_cells, 2), [L_box, 0])),
-            np.add(seeds, np.full((n_cells, 2), [-L_box, -L_box])),
-            np.add(seeds, np.full((n_cells, 2), [0, -L_box])),
-            np.add(seeds, np.full((n_cells, 2), [L_box, -L_box])),
+            np.add(seeds, np.full((n_cells, 2), [-width, +height])),
+            np.add(seeds, np.full((n_cells, 2), [0, +height])),
+            np.add(seeds, np.full((n_cells, 2), [width, +height])),
+            np.add(seeds, np.full((n_cells, 2), [-width, 0])),
+            np.add(seeds, np.full((n_cells, 2), [width, 0])),
+            np.add(seeds, np.full((n_cells, 2), [-width, -height])),
+            np.add(seeds, np.full((n_cells, 2), [0, -height])),
+            np.add(seeds, np.full((n_cells, 2), [width, -height])),
         ),
         axis=0,
     )
@@ -477,8 +477,8 @@ def _make_periodic(  # noqa: C901
     faces = voronoi.regions
 
     # original vertices and not from neighbor copies
-    col0_mask = (vertices[:, 0] >= 0.0) & (vertices[:, 0] <= L_box)
-    col1_mask = (vertices[:, 1] >= 0.0) & (vertices[:, 1] <= L_box)
+    col0_mask = (vertices[:, 0] >= 0.0) & (vertices[:, 0] <= width)
+    col1_mask = (vertices[:, 1] >= 0.0) & (vertices[:, 1] <= height)
 
     periodic_voronoi_vertices_idx: NDArray[np.int32] = np.arange(len(vertices))[col0_mask & col1_mask]
     periodic_voronoi_vertices_pos: NDArray[np.float64] = vertices[col0_mask & col1_mask]
@@ -498,19 +498,19 @@ def _make_periodic(  # noqa: C901
             offsets_inside[(e[1], e[0])] = (0, 0)
         elif source_in:  # and not target_in
             if vertices[e[1]][0] < 0.0:
-                x = vertices[e[1]][0] + L_box
+                x = vertices[e[1]][0] + width
                 offset_x1 = -1
-            elif vertices[e[1]][0] > L_box:
-                x = vertices[e[1]][0] - L_box
+            elif vertices[e[1]][0] > width:
+                x = vertices[e[1]][0] - width
                 offset_x1 = 1
             else:
                 x = vertices[e[1]][0]
                 offset_x1 = 0
             if vertices[e[1]][1] < 0.0:
-                y = vertices[e[1]][1] + L_box
+                y = vertices[e[1]][1] + height
                 offset_y1 = -1
-            elif vertices[e[1]][1] > L_box:
-                y = vertices[e[1]][1] - L_box
+            elif vertices[e[1]][1] > height:
+                y = vertices[e[1]][1] - height
                 offset_y1 = 1
             else:
                 y = vertices[e[1]][1]
@@ -526,19 +526,19 @@ def _make_periodic(  # noqa: C901
                     break
         elif target_in:  # and not source_in
             if vertices[e[0]][0] < 0.0:
-                x = vertices[e[0]][0] + L_box
+                x = vertices[e[0]][0] + width
                 offset_x0 = -1
-            elif vertices[e[0]][0] > L_box:
-                x = vertices[e[0]][0] - L_box
+            elif vertices[e[0]][0] > width:
+                x = vertices[e[0]][0] - width
                 offset_x0 = 1
             else:
                 x = vertices[e[0]][0]
                 offset_x0 = 0
             if vertices[e[0]][1] < 0.0:
-                y = vertices[e[0]][1] + L_box
+                y = vertices[e[0]][1] + height
                 offset_y0 = -1
-            elif vertices[e[0]][1] > L_box:
-                y = vertices[e[0]][1] - L_box
+            elif vertices[e[0]][1] > height:
+                y = vertices[e[0]][1] - height
                 offset_y0 = 1
             else:
                 y = vertices[e[0]][1]
@@ -570,15 +570,15 @@ def _make_periodic(  # noqa: C901
                         face_inside_outside.append(f)
                     else:
                         if vertices[f][0] < 0.0:
-                            x = vertices[f][0] + L_box
-                        elif vertices[f][0] > L_box:
-                            x = vertices[f][0] - L_box
+                            x = vertices[f][0] + width
+                        elif vertices[f][0] > width:
+                            x = vertices[f][0] - width
                         else:
                             x = vertices[f][0]
                         if vertices[f][1] < 0.0:
-                            y = vertices[f][1] + L_box
-                        elif vertices[f][1] > L_box:
-                            y = vertices[f][1] - L_box
+                            y = vertices[f][1] + height
+                        elif vertices[f][1] > height:
+                            y = vertices[f][1] - height
                         else:
                             y = vertices[f][1]
                         for idx, pos in zip(periodic_voronoi_vertices_idx, periodic_voronoi_vertices_pos, strict=False):
@@ -590,7 +590,6 @@ def _make_periodic(  # noqa: C901
 
     periodic_voronoi_faces: list[set[int]] = list(set(faces_inside_outside))
     return (
-        L_box,
         periodic_voronoi_vertices_idx,
         periodic_voronoi_vertices_pos,
         periodic_voronoi_edges,
@@ -600,7 +599,8 @@ def _make_periodic(  # noqa: C901
 
 
 def _make_he_structure(  # noqa: C901
-    L_box: float,
+    width: float,
+    height: float,
     periodic_voronoi_vertices_idx: NDArray[np.int32],
     periodic_voronoi_vertices_pos: NDArray[np.float64],
     periodic_voronoi_edges: list[tuple[int, int]],
@@ -665,24 +665,24 @@ def _make_he_structure(  # noqa: C901
             sum1_offsets += e_offsets[1]
 
             order += (
-                (periodic_voronoi_vertices_pos[idx1][0] + sum0_offsets * L_box)
-                - (periodic_voronoi_vertices_pos[idx0][0] + prev_sum0_offsets * L_box)
+                (periodic_voronoi_vertices_pos[idx1][0] + sum0_offsets * width)
+                - (periodic_voronoi_vertices_pos[idx0][0] + prev_sum0_offsets * width)
             ) * (
-                (periodic_voronoi_vertices_pos[idx1][1] + sum1_offsets * L_box)
-                + (periodic_voronoi_vertices_pos[idx0][1] + prev_sum1_offsets * L_box)
+                (periodic_voronoi_vertices_pos[idx1][1] + sum1_offsets * height)
+                + (periodic_voronoi_vertices_pos[idx0][1] + prev_sum1_offsets * height)
             )
 
             points.append(
                 (
-                    periodic_voronoi_vertices_pos[idx0][0] + prev_sum0_offsets * L_box,
-                    periodic_voronoi_vertices_pos[idx0][1] + prev_sum1_offsets * L_box,
+                    periodic_voronoi_vertices_pos[idx0][0] + prev_sum0_offsets * width,
+                    periodic_voronoi_vertices_pos[idx0][1] + prev_sum1_offsets * height,
                 )
             )
 
             points.append(
                 (
-                    periodic_voronoi_vertices_pos[idx1][0] + sum0_offsets * L_box,
-                    periodic_voronoi_vertices_pos[idx1][1] + sum1_offsets * L_box,
+                    periodic_voronoi_vertices_pos[idx1][0] + sum0_offsets * width,
+                    periodic_voronoi_vertices_pos[idx1][1] + sum1_offsets * height,
                 )
             )
 
@@ -703,13 +703,13 @@ def _make_he_structure(  # noqa: C901
         vertTable[i][1] = pos[1]  # y pos vert
         # vertTable[i][2] = idx_selected_he  # he vert source (random among three)
 
-    faceTable = np.zeros(len(periodic_voronoi_faces))
+    faceTable = np.zeros(len(periodic_voronoi_faces), dtype=np.int32)
     for i, hedges_face in enumerate(ordered_edges_periodic_voronoi_faces):
         for j, he in enumerate(periodic_voronoi_half_edges):
             if he == hedges_face[0]:
                 faceTable[i] = j  # he_inside
 
-    heTable = np.zeros((len(periodic_voronoi_half_edges), 8))
+    heTable = np.zeros((len(periodic_voronoi_half_edges), 8), dtype=np.int32)
     for i, he in enumerate(periodic_voronoi_half_edges):
         for hedges_face in ordered_edges_periodic_voronoi_faces:
             if he in hedges_face:
