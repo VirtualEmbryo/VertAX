@@ -118,7 +118,7 @@ def select_verts_hes_faces(
 
         hes_idxs = []
         verts_idxs = []
-        all_inside = True  # flag to check if all vertices are inside L_box_inner
+        all_inside = True  # flag to check if all vertices are inside inner rectangle
 
         while True:
             v_source = heTable.at[he, 3].get()
@@ -152,9 +152,9 @@ def select_verts_hes_faces(
 # (only for id implementation)
 # listing vertices of a face
 @jit
-def get_vertices_id(face, vertTable: Array, heTable: Array, faceTable: Array):
-    n_cells = len(faceTable)
-    L_box = jnp.sqrt(n_cells)
+def get_vertices_id(face, vertTable: Array, heTable: Array, faceTable: Array, width: float, height: float):
+    # n_cells = len(faceTable)
+    # L_box = jnp.sqrt(n_cells)
 
     start_he = faceTable.at[face].get()
 
@@ -178,7 +178,7 @@ def get_vertices_id(face, vertTable: Array, heTable: Array, faceTable: Array):
         verts_offsets = jnp.where(
             he != start_he,
             jnp.concatenate(
-                (verts_offsets, jnp.array([jnp.array([sum0_offsets * L_box, sum1_offsets * L_box])])), axis=0
+                (verts_offsets, jnp.array([jnp.array([sum0_offsets * width, sum1_offsets * height])])), axis=0
             ),
             jnp.concatenate((verts_offsets, jnp.array([verts_offsets.at[0].get()]))),
         )
@@ -196,8 +196,8 @@ def get_vertices_id(face, vertTable: Array, heTable: Array, faceTable: Array):
 # (only for id implementation)
 # computing area for a face using  ## shoelace formula ##
 @jit
-def get_area_id(face, vertTable: Array, heTable: Array, faceTable: Array):
-    vertices = get_vertices_id(face, vertTable, heTable, faceTable)
+def get_area_id(face, vertTable: Array, heTable: Array, faceTable: Array, width: float, height: float):
+    vertices = get_vertices_id(face, vertTable, heTable, faceTable, width, height)
 
     numerator = 0.0
 
@@ -279,15 +279,15 @@ def update_pbc(
 
 # lee edwards pbc for shear transformation
 def lee_edwards_pbc(vertTable, heTable, faceTable, width, height, gamma, L_bottom, L_top):
-    L_x = jnp.sqrt(len(faceTable))
+    # L_box = jnp.sqrt(len(faceTable))
     rho = gamma * (L_top - L_bottom)  # shear transformation
 
     def body_fun(he, carry):
         vertTable, moved_mask = carry
         cond1 = (vertTable[heTable[he, 3], 0] > L_bottom) & (
-            vertTable[heTable[he, 4], 0] + heTable[he, 6] * L_x < L_bottom
+            vertTable[heTable[he, 4], 0] + heTable[he, 6] * width < L_bottom
         )
-        cond2 = (vertTable[heTable[he, 3], 0] < L_top) & (vertTable[heTable[he, 4], 0] + heTable[he, 6] * L_x > L_top)
+        cond2 = (vertTable[heTable[he, 3], 0] < L_top) & (vertTable[heTable[he, 4], 0] + heTable[he, 6] * width > L_top)
 
         def update_cond1(vt, mask):
             vt = vt.at[heTable[he, 4], 1].add(-rho)  # apply shear transformation
@@ -336,7 +336,7 @@ def get_shear_modulus(
     L_bottom,
     L_top,
 ):
-    L_x = jnp.sqrt(len(faceTable))
+    # L_box = jnp.sqrt(len(faceTable))
 
     def get_energy(gamma):
         vertTable_shear, heTable_shear, faceTable_shear, unmoved_verts = lee_edwards_pbc(
@@ -383,6 +383,6 @@ def get_shear_modulus(
 
         return energy_value
 
-    shear_modulus = (jacfwd(jacfwd(get_energy))(0.0)) / ((L_top - L_bottom) * (L_x))
+    shear_modulus = (jacfwd(jacfwd(get_energy))(0.0)) / ((L_top - L_bottom) * (width))
 
     return shear_modulus
