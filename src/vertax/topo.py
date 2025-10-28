@@ -121,8 +121,8 @@ def update_T1(
             y_source_he = vertTable_new[he[3], 1]
             x_target_he = vertTable_new[he[4], 0]
             y_target_he = vertTable_new[he[4], 1]
-            offset_x_target_he = heTable_new[he_idx, 6] * L_box
-            offset_y_target_he = heTable_new[he_idx, 7] * L_box
+            offset_x_target_he = heTable_new[he_idx, 6] * width
+            offset_y_target_he = heTable_new[he_idx, 7] * height
 
             center_x_he = ((x_source_he) + (x_target_he + offset_x_target_he)) / 2
             center_y_he = ((y_source_he) + (y_target_he + offset_y_target_he)) / 2
@@ -148,8 +148,8 @@ def update_T1(
             y_source_twin_he = vertTable_new[twin_he[3], 1]
             x_target_twin_he = vertTable_new[twin_he[4], 0]
             y_target_twin_he = vertTable_new[twin_he[4], 1]
-            offset_x_target_twin_he = heTable_new[twin_he_idx, 6] * L_box
-            offset_y_target_twin_he = heTable_new[twin_he_idx, 7] * L_box
+            offset_x_target_twin_he = heTable_new[twin_he_idx, 6] * width
+            offset_y_target_twin_he = heTable_new[twin_he_idx, 7] * height
 
             center_x_twin_he = ((x_source_twin_he) + (x_target_twin_he + offset_x_target_twin_he)) / 2
             center_y_twin_he = ((y_source_twin_he) + (y_target_twin_he + offset_y_target_twin_he)) / 2
@@ -209,8 +209,8 @@ def update_T1(
             y_source_he = vertTable_new[he[3], 1]
             x_target_he = vertTable_new[he[4], 0]
             y_target_he = vertTable_new[he[4], 1]
-            offset_x_target_he = heTable_new[he_idx, 6] * L_box
-            offset_y_target_he = heTable_new[he_idx, 7] * L_box
+            offset_x_target_he = heTable_new[he_idx, 6] * width
+            offset_y_target_he = heTable_new[he_idx, 7] * height
 
             center_x_he = ((x_source_he) + (x_target_he + offset_x_target_he)) / 2
             center_y_he = ((y_source_he) + (y_target_he + offset_y_target_he)) / 2
@@ -236,8 +236,8 @@ def update_T1(
             y_source_twin_he = vertTable_new[twin_he[3], 1]
             x_target_twin_he = vertTable_new[twin_he[4], 0]
             y_target_twin_he = vertTable_new[twin_he[4], 1]
-            offset_x_target_twin_he = heTable_new[twin_he_idx, 6] * L_box
-            offset_y_target_twin_he = heTable_new[twin_he_idx, 7] * L_box
+            offset_x_target_twin_he = heTable_new[twin_he_idx, 6] * width
+            offset_y_target_twin_he = heTable_new[twin_he_idx, 7] * height
 
             center_x_twin_he = ((x_source_twin_he) + (x_target_twin_he + offset_x_target_twin_he)) / 2
             center_y_twin_he = ((y_source_twin_he) + (y_target_twin_he + offset_y_target_twin_he)) / 2
@@ -300,9 +300,6 @@ def update_T1(
         )
 
         return vertTable_new, heTable_new, faceTable_new
-
-    n_cells = len(faceTable)
-    L_box = jnp.sqrt(n_cells)
 
     state = (vertTable, heTable, faceTable)
 
