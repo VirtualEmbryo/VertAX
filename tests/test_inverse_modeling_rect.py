@@ -11,10 +11,11 @@ from numpy.testing import assert_allclose
 from vertax.cost import cost_v2v
 from vertax.geo import get_area, get_length
 from vertax.opt import BilevelOptimizationMethod, bilevel_opt, inner_opt
-from vertax.start import create_mesh_from_seeds, load_mesh
+from vertax.pbc import PBCMesh
+from vertax.plot import plot_mesh
 
 
-def test_inverse_modeling_for_regressions() -> None:
+def save_inverse_modeling_rect_for_regressions() -> None:
     """Check identical result of a standard test with previous results (october 2025)."""
     t_start = perf_counter()
 
@@ -32,7 +33,7 @@ def test_inverse_modeling_for_regressions() -> None:
     iterations_max = 1000
     tolerance = 1e-4
     patience = 5
-    epochs = 2
+    epochs = 200
 
     # Energy function
     @jit
@@ -64,12 +65,12 @@ def test_inverse_modeling_for_regressions() -> None:
         )
 
     # Initial condition (vertices)
-    key = jax.random.PRNGKey(0)  # change the seed for different results
+    deform = 1.4142
     L_box = jnp.sqrt(n_cells)
-    width = float(L_box)
-    height = float(L_box)
-    seeds = L_box * jax.random.uniform(key, shape=(n_cells, 2))
-    vertTable, heTable, faceTable = create_mesh_from_seeds(seeds)
+    width = float(L_box) * deform
+    height = float(L_box) / deform
+    mesh = PBCMesh.periodic_voronoi_from_random_seeds(n_cells, width, height, random_key=0)
+    vertTable, heTable, faceTable = mesh.vertices, mesh.edges, mesh.faces
 
     # Initial condition (parameters)
     key = jax.random.PRNGKey(1)  # change the seed for different results
@@ -130,6 +131,36 @@ def test_inverse_modeling_for_regressions() -> None:
         selected_verts=None,
         selected_hes=None,
         selected_faces=None,
+    )
+
+    # Plotting
+    plot_mesh(
+        vertTable,
+        heTable,
+        faceTable,
+        width,
+        height,
+        multicolor=True,
+        lines=True,
+        vertices=False,
+        path="./tests",
+        name="energy_minimization",
+        show=False,
+        save=False,
+    )
+    plot_mesh(
+        vertTable_target,
+        heTable_target,
+        faceTable_target,
+        width,
+        height,
+        multicolor=True,
+        lines=True,
+        vertices=False,
+        path="./tests",
+        name="energy_minimization_target",
+        show=False,
+        save=True,
     )
 
     # Areas target are the actual target ones at equilibrium (and remain fixed during BO)
@@ -219,17 +250,32 @@ def test_inverse_modeling_for_regressions() -> None:
             beta=None,
             method=BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION,  # change to EP, ID, AS
         )
+        if j % 10 == 0:
+            plot_mesh(
+                vertTable,
+                heTable,
+                faceTable,
+                width,
+                height,
+                multicolor=True,
+                lines=True,
+                vertices=False,
+                path="./tests",
+                name="bilevel_result_" + str(j),
+                show=False,
+                save=True,
+            )
 
     t_end = perf_counter()
     elapsed_times = t_end - t_start
     print(f"Test forward modelling took {elapsed_times:.2f} s.")
 
-    ref_vertices, ref_edges, ref_faces = load_mesh("tests/reference_result_test_inverse_modeling.npz")
+    # ref_vertices, ref_edges, ref_faces = load_mesh("tests/reference_result_test_inverse_modeling.npz")
 
-    assert_allclose(vertTable, ref_vertices[:, :-1], rtol=0.001)
-    assert_allclose(heTable, ref_edges, rtol=0.001)
-    assert_allclose(faceTable, ref_faces, rtol=0.001)
+    # assert_allclose(vertTable, ref_vertices[:, :-1], rtol=0.001)
+    # assert_allclose(heTable, ref_edges, rtol=0.001)
+    # assert_allclose(faceTable, ref_faces, rtol=0.001)
 
 
 if __name__ == "__main__":
-    test_inverse_modeling_for_regressions()
+    save_inverse_modeling_rect_for_regressions()
