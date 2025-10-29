@@ -510,7 +510,7 @@ def forward(
     image_target,
     beta,
 ):
-    def loss_ep_forward(vt, ht, ft, vp, hp, fp):
+    def loss_ep_forward(vt, ht, ft, width, height, vp, hp, fp):
         return loss_ep(
             vt,
             ht,
@@ -1051,7 +1051,7 @@ def bilevel_opt(
     selected_hes,
     selected_faces,
     image_target=None,
-    beta=None,
+    beta=0.01,
     method: BilevelOptimizationMethod = BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION,
 ):
     match method:
