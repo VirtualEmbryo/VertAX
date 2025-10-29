@@ -268,7 +268,7 @@ def save_inverse_modeling_rect_for_regressions() -> None:
 
     t_end = perf_counter()
     elapsed_times = t_end - t_start
-    print(f"Test forward modelling took {elapsed_times:.2f} s.")
+    print(f"Test inverse modelling (rect) took {elapsed_times:.2f} s.")
 
     # ref_vertices, ref_edges, ref_faces = load_mesh("tests/reference_result_test_inverse_modeling.npz")
 
