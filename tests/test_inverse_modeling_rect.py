@@ -247,7 +247,7 @@ def save_inverse_modeling_rect_for_regressions() -> None:
             selected_hes=None,
             selected_faces=None,
             image_target=None,
-            beta=None,
+            beta=0.01,
             method=BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION,  # change to EP, ID, AS
         )
         if j % 10 == 0:
