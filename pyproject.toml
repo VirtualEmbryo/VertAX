@@ -20,7 +20,7 @@
         "scikit-image==0.24.0",
         "scipy>=1.16.2",
         "tifffile==2024.12.12",
-    ]
+]
 
     classifiers = [
         "Development Status :: 1 - Planning",
@@ -136,4 +136,7 @@
     testpaths      = ["tests"]
 
 [dependency-groups]
-    dev = ["pytest>=8.4.2"]
+    dev = [
+    "pytest>=8.4.2",
+    "scalene>=1.5.55",
+]

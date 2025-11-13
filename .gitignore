@@ -1,4 +1,10 @@
 simulation_init
+FINAL
+edges.txt
+faces.txt
+refined_and_padded_image.tiff
+segmented_image.tiff
+vertices.npy
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -155,7 +155,7 @@ def gaussian_blur_line_segments(x):
 ##################
 
 
-@jit
+@partial(jit, static_argnums=(3, 4))
 def cost_v2v(
     vertTable,
     heTable,
@@ -179,7 +179,6 @@ def cost_v2v(
 
     # L_box = jnp.sqrt(len(faceTable))
 
-    @jit
     def squared_distance(v, vertTable, vertTable_target, width: float, height: float):
         return (
             jnp.min(

@@ -1,11 +1,12 @@
 """Optimization methods for VertAX."""
 
 from enum import Enum
+from functools import partial
 
 import jax
 import jax.numpy as jnp
 import optax
-from jax import grad, jacfwd, lax, Array
+from jax import Array, grad, jacfwd, jit, lax
 
 from vertax.geo import update_pbc
 from vertax.topo import update_T1
@@ -29,67 +30,40 @@ class OptimizationTarget(Enum):
 ###############################
 
 
-def minimize(
-    vertTable,
-    heTable,
-    faceTable,
+@partial(jit, static_argnums=(9, 10, 11, 12, 13, 14, 15, 16, 17))
+def _jit_minimize(
+    vertTable: Array,
+    heTable: Array,
+    faceTable: Array,
+    vert_params: Array,
+    he_params: Array,
+    face_params: Array,
+    selected_verts: Array,
+    selected_hes: Array,
+    selected_faces: Array,
     width: float,
     height: float,
-    vert_params,
-    he_params,
-    face_params,
     L_in,
     solver,
     min_dist_T1,
-    iterations_max=1e3,
+    iterations_max: int = 1000,
     tolerance=1e-4,
     patience=5,
-    selected_verts=None,
-    selected_hes=None,
-    selected_faces=None,
     optimization_target: OptimizationTarget = OptimizationTarget.VERTICES,
 ):
-    # ensure width and height are hashable...
-    width = float(width)
-    height = float(height)
-
-    if selected_verts is None:
-        selected_verts = jnp.arange(vertTable.shape[0])
-    if selected_hes is None:
-        selected_hes = jnp.arange(heTable.shape[0])
-    if selected_faces is None:
-        selected_faces = jnp.arange(faceTable.shape[0])
-
-    iterations_max = int(iterations_max)
-    patience = int(patience)
-
-    # --- select the target array and indices for the optimizer ---
-    match optimization_target:
-        case OptimizationTarget.VERTICES:
-            x0, sel = vertTable, selected_verts
-        case OptimizationTarget.EDGES:
-            x0, sel = heTable, selected_hes
-        case OptimizationTarget.FACES:
-            x0, sel = faceTable, selected_faces
-        case OptimizationTarget.VERTEX_PARAMETERS:
-            x0, sel = vert_params, selected_verts
-        case OptimizationTarget.EDGE_PARAMETERS:
-            x0, sel = he_params, selected_hes
-        case OptimizationTarget.FACE_PARAMETERS:
-            x0, sel = face_params, selected_faces
-        case _:
-            msg = f"Optimization target must be an OptimizationTarget. Got {optimization_target}."
-            raise ValueError(msg)
-
-    # --- check if the target is float-type before differentiating ---
-    if not jnp.issubdtype(x0.dtype, jnp.floating):
-        msg = (
-            f"Cannot differentiate {optimization_target}: "
-            f"target array has dtype {x0.dtype}. "
-            f"Use a float array (vertTable, vert_params, he_params, face_params) only."
-        )
-        raise TypeError(msg)
-
+    x0: Array = [vertTable, heTable, faceTable, None, None, vert_params, he_params, face_params][
+        optimization_target.value
+    ]  # type: ignore
+    sel: Array = [
+        selected_verts,
+        selected_hes,
+        selected_faces,
+        None,
+        None,
+        selected_verts,
+        selected_hes,
+        selected_faces,
+    ][optimization_target.value]  # type: ignore
     opt_state = solver.init(x0)
 
     # Initial loss and bookkeeping
@@ -109,7 +83,10 @@ def minimize(
     step_count = jnp.array(0)
     should_stop = jnp.array(False)
 
-    def update_step(carry):
+    # 2. Define the inner step function for lax.scan
+    # The inner function is defined *without* @jit because it's compiled by lax.scan/jit on minimize
+    def scan_step(carry, i):
+        # Unpack the carry structure:
         (
             vt,
             ht,
@@ -125,6 +102,8 @@ def minimize(
             L_list,
         ) = carry
 
+        # Determine if we are still running (i.e., not stopped)
+        is_running = jnp.logical_not(should_stop)
         # 1) Compute loss
         L_current = L_in(
             vt[selected_verts],
@@ -136,47 +115,58 @@ def minimize(
             hp[selected_hes],
             fp[selected_faces],
         )
-        L_list = L_list.at[step_count].set(L_current)
 
         # 2) Early stopping bookkeeping
         denom = jnp.where(prev_L_values[-1] != 0, prev_L_values[-1], 1.0)
         rel_var = jnp.abs((L_current - prev_L_values[-1]) / denom)
-        stagnation_count = stagnation_count + jnp.where(rel_var < tolerance, 1, -stagnation_count)
-        should_stop = (stagnation_count >= patience) | (step_count >= iterations_max - 1)
+
+        new_stagnation_count = jnp.where(rel_var < tolerance, stagnation_count + 1, 0)
+        new_should_stop = (new_stagnation_count >= patience) | (i >= iterations_max - 1)  # type: ignore
 
         # 3) Gradient wrt chosen argnums
-        grads = jacfwd(L_in, argnums=optimization_target.value)(vt, ht, ft, width, height, vp, hp, fp)
+        grads = grad(L_in, argnums=optimization_target.value)(vt, ht, ft, width, height, vp, hp, fp)
 
         # 4) Optimizer update
-        updates, opt_state = solver.update(grads, opt_state)
+        updates, new_opt_state = solver.update(grads, opt_state)
 
         # 5) Apply updates to the chosen array on selected indices
         updates_sel = updates.at[sel].get()
-        match optimization_target:
-            case OptimizationTarget.VERTICES:
-                vt = vt.at[sel].set(vt[sel] + updates_sel)
-            case OptimizationTarget.EDGES:
-                ht = ht.at[sel].set(ht[sel] + updates_sel)
-            case OptimizationTarget.FACES:
-                ft = ft.at[sel].set(ft[sel] + updates_sel)
-            case OptimizationTarget.VERTEX_PARAMETERS:
-                vp = vp.at[sel].set(vp[sel] + updates_sel)
-            case OptimizationTarget.EDGE_PARAMETERS:
-                hp = hp.at[sel].set(hp[sel] + updates_sel)
-            case OptimizationTarget.FACE_PARAMETERS:
-                fp = fp.at[sel].set(fp[sel] + updates_sel)
+        arrays = [vt, ht, ft, None, None, vp, hp, fp]
+        k = optimization_target.value
+        # --- Conditional Application of Optimization Update and State ---
 
-        # 6) Geometry updates
-        vt, ht, ft = update_pbc(vt, ht, ft, width, height)
-        vt, ht, ft = update_T1(vt, ht, ft, width, height, vp, hp, fp, L_in, min_dist_T1)
+        new_optim = arrays[k].at[sel].set(arrays[k][sel] + updates_sel)  # type: ignore
+        arrays[k] = lax.cond(is_running, lambda: new_optim, lambda: arrays[k])  # type: ignore
+
+        vt, ht, ft, _, _, vp, hp, fp = arrays
+        # new_vt_optim = vt.at[sel].set(vt[sel] + updates_sel)
+        # vt = lax.cond(is_running and should_update_vt, lambda: new_vt_optim, lambda: vt)
+
+        opt_state = lax.cond(is_running, lambda: new_opt_state, lambda: opt_state)
+        stagnation_count = lax.cond(is_running, lambda: new_stagnation_count, lambda: stagnation_count)
+        should_stop = new_should_stop  # should_stop is a flag for the *next* iteration
+
+        # 6) Geometry updates (Must also be conditional/masked)
+        new_vt_pbc, new_ht_pbc, new_ft_pbc = update_pbc(vt, ht, ft, width, height)
+        vt = lax.cond(is_running, lambda: new_vt_pbc, lambda: vt)
+        ht = lax.cond(is_running, lambda: new_ht_pbc, lambda: ht)
+        ft = lax.cond(is_running, lambda: new_ft_pbc, lambda: ft)
+
+        new_vt_T1, new_ht_T1, new_ft_T1 = update_T1(vt, ht, ft, width, height, vp, hp, fp, L_in, min_dist_T1)
+        vt = lax.cond(is_running, lambda: new_vt_T1, lambda: vt)
+        ht = lax.cond(is_running, lambda: new_ht_T1, lambda: ht)
+        ft = lax.cond(is_running, lambda: new_ft_T1, lambda: ft)
 
         # 7) Shift prev_L_values
-        prev_L_values = prev_L_values.at[1:].set(prev_L_values[:-1])
-        prev_L_values = prev_L_values.at[0].set(L_current)
+        new_prev_L_values = prev_L_values.at[1:].set(prev_L_values[:-1])
+        new_prev_L_values = new_prev_L_values.at[0].set(L_current)
+        prev_L_values = lax.cond(is_running, lambda: new_prev_L_values, lambda: prev_L_values)
 
-        step_count += 1
+        # 8) Update History and Step Count
+        L_list = L_list.at[i].set(L_current)
+        step_count = i + 1
 
-        return (
+        new_carry = (
             vt,
             ht,
             ft,
@@ -190,33 +180,86 @@ def minimize(
             should_stop,
             L_list,
         )
+        return new_carry, None
 
-    def cond_fn(state):
-        return jnp.logical_not(state[10])  # should_stop
+    # 3. Call lax.scan
 
-    final_state = lax.while_loop(
-        cond_fn,
-        update_step,
-        (
-            vertTable,
-            heTable,
-            faceTable,
-            vert_params,
-            he_params,
-            face_params,
-            opt_state,
-            prev_L_values,
-            stagnation_count,
-            step_count,
-            should_stop,
-            L_in_list,
-        ),
+    init_carry = (
+        vertTable,
+        heTable,
+        faceTable,
+        vert_params,
+        he_params,
+        face_params,
+        opt_state,
+        prev_L_values,
+        stagnation_count,
+        step_count,
+        should_stop,
+        L_in_list,
     )
 
-    vt_f, ht_f, ft_f, vp_f, hp_f, fp_f, _, _, _, step_f, _, L_hist = final_state
-    final_L_list = L_hist[:step_f]
+    final_state, _ = lax.scan(scan_step, init_carry, xs=jnp.arange(iterations_max))
 
-    return (vt_f, ht_f, ft_f, vp_f, hp_f, fp_f), final_L_list
+    # 4. Unpack and return results (for slicing outside JIT)
+    vt_f, ht_f, ft_f, vp_f, hp_f, fp_f, _, _, _, step_f, _, L_hist = final_state
+    return (vt_f, ht_f, ft_f, vp_f, hp_f, fp_f), (L_hist, step_f)
+
+
+def minimize(
+    vertTable,
+    heTable,
+    faceTable,
+    width: float,
+    height: float,
+    vert_params,
+    he_params,
+    face_params,
+    L_in,
+    solver,
+    min_dist_T1,
+    iterations_max=1000,
+    tolerance=1e-4,
+    patience=5,
+    selected_verts=None,
+    selected_hes=None,
+    selected_faces=None,
+    optimization_target: OptimizationTarget = OptimizationTarget.VERTICES,
+):
+    # ensure width and height are hashable...
+    width = float(width)
+    height = float(height)
+    iterations_max = int(iterations_max)
+    patience = int(patience)
+    min_dist_T1 = float(min_dist_T1)
+    tolerance = float(tolerance)
+
+    selected_verts = jnp.arange(vertTable.shape[0]) if selected_verts is None else jnp.array(selected_verts)
+    selected_hes = jnp.arange(heTable.shape[0]) if selected_hes is None else jnp.array(selected_hes)
+    selected_faces = jnp.arange(faceTable.shape[0]) if selected_faces is None else jnp.array(selected_faces)
+
+    iterations_max = int(iterations_max)
+    patience = int(patience)
+    return _jit_minimize(
+        vertTable=vertTable,
+        heTable=heTable,
+        faceTable=faceTable,
+        vert_params=vert_params,
+        he_params=he_params,
+        face_params=face_params,
+        selected_verts=selected_verts,
+        selected_hes=selected_hes,
+        selected_faces=selected_faces,
+        width=width,
+        height=height,
+        L_in=L_in,
+        solver=solver,
+        min_dist_T1=min_dist_T1,
+        iterations_max=iterations_max,
+        tolerance=tolerance,
+        patience=patience,
+        optimization_target=optimization_target,
+    )
 
 
 def inner_opt(
@@ -231,7 +274,7 @@ def inner_opt(
     L_in,
     solver,
     min_dist_T1,
-    iterations_max=1e3,
+    iterations_max=1000,
     tolerance=1e-4,
     patience=5,
     selected_verts=None,
@@ -239,7 +282,7 @@ def inner_opt(
     selected_faces=None,
 ):
     # Use the general minimize function with VERTICES (optimize vertTable)
-    (vt_f, ht_f, ft_f, vp_f, hp_f, fp_f), L_hist = minimize(
+    (vt_f, ht_f, ft_f, vp_f, hp_f, fp_f), (L_hist_full, step_f_array) = minimize(
         vertTable,
         heTable,
         faceTable,
@@ -260,8 +303,14 @@ def inner_opt(
         optimization_target=OptimizationTarget.VERTICES,
     )
 
+    # Convert the JAX array step_f to a Python integer
+    step_f = step_f_array.item()
+
+    # Now slice using standard Python/NumPy slicing
+    final_L_list = L_hist_full[:step_f]
+
     # Return updated arrays and loss history
-    return (vt_f, ht_f, ft_f), L_hist
+    return (vt_f, ht_f, ft_f), final_L_list
 
 
 def cost_ad(
@@ -280,7 +329,7 @@ def cost_ad(
     L_out,
     solver_inner,
     min_dist_T1,
-    iterations_max=1e3,
+    iterations_max=1000,
     tolerance=1e-4,
     patience=5,
     selected_verts=None,
@@ -351,7 +400,7 @@ def outer_opt(
     selected_faces,
     image_target,
 ):
-    grad_verts = jacfwd(cost_ad, argnums=5)(
+    grad_verts = grad(cost_ad, argnums=5)(
         vertTable,
         heTable,
         faceTable,
@@ -376,7 +425,7 @@ def outer_opt(
         image_target,
     )
 
-    grad_hes = jacfwd(cost_ad, argnums=6)(
+    grad_hes = grad(cost_ad, argnums=6)(
         vertTable,
         heTable,
         faceTable,
@@ -401,7 +450,7 @@ def outer_opt(
         image_target,
     )
 
-    grad_faces = jacfwd(cost_ad, argnums=7)(
+    grad_faces = grad(cost_ad, argnums=7)(
         vertTable,
         heTable,
         faceTable,
@@ -532,7 +581,7 @@ def forward(
             beta,
         )
 
-    (vt_f, ht_f, ft_f, vp_f, hp_f, fp_f), final_L_list = minimize(
+    (vt_f, ht_f, ft_f, vp_f, hp_f, fp_f), (L_hist_full, step_f_array) = minimize(
         vertTable,
         heTable,
         faceTable,
@@ -553,6 +602,13 @@ def forward(
         optimization_target=OptimizationTarget.VERTICES,
     )
 
+    # Convert the JAX array step_f to a Python integer
+    step_f = step_f_array.item()
+
+    # Now slice using standard Python/NumPy slicing
+    final_L_list = L_hist_full[:step_f]
+
+    # Return updated arrays and loss history
     return (vt_f, ht_f, ft_f), final_L_list
 
 
@@ -582,7 +638,7 @@ def outer_eq_prop(
     image_target,
     beta,
 ):
-    (vertTable_free, heTable_free, faceTable_free), loss_free = forward(
+    (vertTable_free, heTable_free, faceTable_free), _ = forward(
         vertTable,
         heTable,
         faceTable,
@@ -608,7 +664,7 @@ def outer_eq_prop(
         beta=0.0,
     )
 
-    (vertTable_nudged, heTable_nudged, faceTable_nudged), loss_nudged = forward(
+    (vertTable_nudged, heTable_nudged, faceTable_nudged), _ = forward(
         vertTable,
         heTable,
         faceTable,
@@ -634,7 +690,7 @@ def outer_eq_prop(
         beta,
     )
 
-    grad_loss_ep_free_verts = jacfwd(loss_ep, argnums=5)(
+    grad_loss_ep_free_verts = grad(loss_ep, argnums=5)(
         vertTable_free,
         heTable_free,
         faceTable_free,
@@ -655,7 +711,7 @@ def outer_eq_prop(
         beta=0.0,
     )
 
-    grad_loss_ep_nudged_verts = jacfwd(loss_ep, argnums=5)(
+    grad_loss_ep_nudged_verts = grad(loss_ep, argnums=5)(
         vertTable_nudged,
         heTable_nudged,
         faceTable_nudged,
@@ -676,7 +732,7 @@ def outer_eq_prop(
         beta,
     )
 
-    grad_loss_ep_free_hes = jacfwd(loss_ep, argnums=6)(
+    grad_loss_ep_free_hes = grad(loss_ep, argnums=6)(
         vertTable_free,
         heTable_free,
         faceTable_free,
@@ -697,7 +753,7 @@ def outer_eq_prop(
         beta=0.0,
     )
 
-    grad_loss_ep_nudged_hes = jacfwd(loss_ep, argnums=6)(
+    grad_loss_ep_nudged_hes = grad(loss_ep, argnums=6)(
         vertTable_nudged,
         heTable_nudged,
         faceTable_nudged,
@@ -718,7 +774,7 @@ def outer_eq_prop(
         beta,
     )
 
-    grad_loss_ep_free_faces = jacfwd(loss_ep, argnums=7)(
+    grad_loss_ep_free_faces = grad(loss_ep, argnums=7)(
         vertTable_free,
         heTable_free,
         faceTable_free,
@@ -739,7 +795,7 @@ def outer_eq_prop(
         beta=0.0,
     )
 
-    grad_loss_ep_nudged_faces = jacfwd(loss_ep, argnums=7)(
+    grad_loss_ep_nudged_faces = grad(loss_ep, argnums=7)(
         vertTable_nudged,
         heTable_nudged,
         faceTable_nudged,
@@ -814,7 +870,7 @@ def outer_implicit(
         )
         return L_in(vertTable_tmp, heTable, faceTable, width, height, vert_params, he_params, face_params)
 
-    (vertTable_eq, heTable_eq, faceTable_eq), L_in_value = inner_opt(
+    (vertTable_eq, heTable_eq, faceTable_eq), _ = inner_opt(
         vertTable,
         heTable,
         faceTable,
@@ -834,17 +890,17 @@ def outer_implicit(
         selected_faces,
     )
 
-    H = jacfwd(jacfwd(L_in_flatten, argnums=0), argnums=0)(
+    H = jacfwd(grad(L_in_flatten, argnums=0), argnums=0)(
         vertTable_eq[:, :2].flatten(), heTable_eq, faceTable_eq, width, height, vert_params, he_params, face_params
     )
 
-    crossderivative_verts = jacfwd(jacfwd(L_in_flatten, argnums=0), argnums=5)(
+    crossderivative_verts = jacfwd(grad(L_in_flatten, argnums=0), argnums=5)(
         vertTable_eq[:, :2].flatten(), heTable_eq, faceTable_eq, width, height, vert_params, he_params, face_params
     )
-    crossderivative_hes = jacfwd(jacfwd(L_in_flatten, argnums=0), argnums=6)(
+    crossderivative_hes = jacfwd(grad(L_in_flatten, argnums=0), argnums=6)(
         vertTable_eq[:, :2].flatten(), heTable_eq, faceTable_eq, width, height, vert_params, he_params, face_params
     )
-    crossderivative_faces = jacfwd(jacfwd(L_in_flatten, argnums=0), argnums=7)(
+    crossderivative_faces = jacfwd(grad(L_in_flatten, argnums=0), argnums=7)(
         vertTable_eq[:, :2].flatten(), heTable_eq, faceTable_eq, width, height, vert_params, he_params, face_params
     )
 
@@ -945,7 +1001,7 @@ def outer_adjoint_state(
         )
         return L_in(vertTable_tmp, heTable, faceTable, width, height, vert_params, he_params, face_params)
 
-    (vertTable_eq, heTable_eq, faceTable_eq), L_in_value = inner_opt(
+    (vertTable_eq, heTable_eq, faceTable_eq), _ = inner_opt(
         vertTable,
         heTable,
         faceTable,
@@ -965,7 +1021,7 @@ def outer_adjoint_state(
         selected_faces,
     )
 
-    H = jacfwd(jacfwd(L_in_flatten, argnums=0), argnums=0)(
+    H = jacfwd(grad(L_in_flatten, argnums=0), argnums=0)(
         vertTable_eq[:, :2].flatten(), heTable_eq, faceTable_eq, width, height, vert_params, he_params, face_params
     )
 
@@ -973,13 +1029,13 @@ def outer_adjoint_state(
     # print(jax.numpy.linalg.eig(H)[0].min())
     # print('\n')
 
-    crossderivative_verts = jacfwd(jacfwd(L_in_flatten, argnums=5), argnums=0)(
+    crossderivative_verts = jacfwd(grad(L_in_flatten, argnums=5), argnums=0)(
         vertTable_eq[:, :2].flatten(), heTable_eq, faceTable_eq, width, height, vert_params, he_params, face_params
     )
-    crossderivative_hes = jacfwd(jacfwd(L_in_flatten, argnums=6), argnums=0)(
+    crossderivative_hes = jacfwd(grad(L_in_flatten, argnums=6), argnums=0)(
         vertTable_eq[:, :2].flatten(), heTable_eq, faceTable_eq, width, height, vert_params, he_params, face_params
     )
-    crossderivative_faces = jacfwd(jacfwd(L_in_flatten, argnums=7), argnums=0)(
+    crossderivative_faces = jacfwd(grad(L_in_flatten, argnums=7), argnums=0)(
         vertTable_eq[:, :2].flatten(), heTable_eq, faceTable_eq, width, height, vert_params, he_params, face_params
     )
 
@@ -1082,26 +1138,6 @@ def bilevel_opt(
                 image_target,
             )
 
-            (vertTable, heTable, faceTable), cost = inner_opt(
-                vertTable,
-                heTable,
-                faceTable,
-                width,
-                height,
-                vert_params,
-                he_params,
-                face_params,
-                L_in,
-                solver_inner,
-                min_dist_T1,
-                iterations_max,
-                tolerance,
-                patience,
-                selected_verts,
-                selected_hes,
-                selected_faces,
-            )
-
         case BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION:
             vert_params, he_params, face_params = outer_eq_prop(
                 vertTable,
@@ -1128,32 +1164,6 @@ def bilevel_opt(
                 selected_faces,
                 image_target,
                 beta,
-            )
-
-            (vertTable, heTable, faceTable), cost = forward(
-                vertTable,
-                heTable,
-                faceTable,
-                width,
-                height,
-                vert_params,
-                he_params,
-                face_params,
-                vertTable_target,
-                heTable_target,
-                faceTable_target,
-                L_in,
-                L_out,
-                solver_inner,
-                min_dist_T1,
-                iterations_max,
-                tolerance,
-                patience,
-                selected_verts,
-                selected_hes,
-                selected_faces,
-                image_target,
-                beta=0.0,
             )
 
         case BilevelOptimizationMethod.IMPLICIT_DIFFERENTIATION:
@@ -1183,26 +1193,6 @@ def bilevel_opt(
                 image_target,
             )
 
-            (vertTable, heTable, faceTable), cost = inner_opt(
-                vertTable,
-                heTable,
-                faceTable,
-                width,
-                height,
-                vert_params,
-                he_params,
-                face_params,
-                L_in,
-                solver_inner,
-                min_dist_T1,
-                iterations_max,
-                tolerance,
-                patience,
-                selected_verts,
-                selected_hes,
-                selected_faces,
-            )
-
         case BilevelOptimizationMethod.ADJOINT_STATE:
             vert_params, he_params, face_params = outer_adjoint_state(
                 vertTable,
@@ -1230,27 +1220,28 @@ def bilevel_opt(
                 image_target,
             )
 
-            (vertTable, heTable, faceTable), cost = inner_opt(
-                vertTable,
-                heTable,
-                faceTable,
-                width,
-                height,
-                vert_params,
-                he_params,
-                face_params,
-                L_in,
-                solver_inner,
-                min_dist_T1,
-                iterations_max,
-                tolerance,
-                patience,
-                selected_verts,
-                selected_hes,
-                selected_faces,
-            )
-
         case _:
             msg = f"Method not recognized. Must be a BilevelOptimizationMethod. Got {method}."
             raise ValueError(msg)
+
+    (vertTable, heTable, faceTable), cost = inner_opt(
+        vertTable,
+        heTable,
+        faceTable,
+        width,
+        height,
+        vert_params,
+        he_params,
+        face_params,
+        L_in,
+        solver_inner,
+        min_dist_T1,
+        iterations_max,
+        tolerance,
+        patience,
+        selected_verts,
+        selected_hes,
+        selected_faces,
+    )
+
     return (vertTable, heTable, faceTable, vert_params, he_params, face_params), cost

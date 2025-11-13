@@ -8,27 +8,68 @@ from jax import jacfwd, jit, vmap, Array
 from jax.lax import while_loop
 
 
-@partial(jit, static_argnums=(3,))
-def sum_edges(face, heTable: Array, faceTable: Array, fun):
+@partial(jit, static_argnums=(3, 4))
+def sum_edges(face, heTable: Array, faceTable: Array, fun, max_iter: int):
+    """Sums edge contributions for a face using lax.scan.
+
+    Running for a fixed number of iterations (max_iter).
+    """
     start_he = faceTable.at[face].get()
-    he = start_he
-    res = fun(he, jnp.array([0.0, 0.0, 0.0]))
-    he = heTable.at[he, 1].get()
 
-    # stacked_data = (current_he, current_res)
-    # res is the sum of contributions before current_he
-    def cond_fun(stacked_data):
-        he, _ = stacked_data
-        return he != start_he
+    # 1. Process the first edge (start_he)
+    # This computes the first contribution and sets the initial state
+    res_0 = fun(start_he, jnp.array([0.0, 0.0, 0.0]))
 
-    def body_fun(stacked_data):
-        he, res = stacked_data
-        next_he = heTable.at[he, 1].get()
-        res += fun(he, res)
-        return next_he, res
+    # 2. Setup initial carry for the scan
+    # The scan will process the (max_iter - 1) *remaining* edges
+    # state = (last_he, cumulative_res, has_stopped_flag)
+    initial_carry = (start_he, res_0, False)
 
-    _, res = while_loop(cond_fun, body_fun, (he, res))
-    return res
+    # 3. Create a dummy array for scan to iterate over
+    # It will run (max_iter - 1) times
+    xs = jnp.arange(max_iter - 1)
+
+    def scan_body(carry, i):
+        """The body of the lax.scan.
+
+        `carry` is the state from the *previous* iteration.
+        `i` is the current loop index (from xs).
+        """
+        previous_he, previous_res, has_stopped = carry
+
+        # Get the *next* half-edge in the face loop
+        current_he = heTable.at[previous_he, 1].get()
+
+        # Check if this new edge is the one we started with
+        is_start_node = current_he == start_he
+
+        # Latch the 'has_stopped' flag. Once it's True, it stays True.
+        has_stopped = has_stopped | is_start_node
+
+        # Calculate the contribution of the *current* edge,
+        # using the *previous* cumulative result (for offsets)
+        contribution = fun(current_he, previous_res)
+
+        # Accumulate the result,
+        # but only if the 'has_stopped' flag is not set.
+        new_res = jax.lax.select(
+            has_stopped,
+            previous_res,  # If stopped, result is unchanged
+            previous_res + contribution,  # If running, accumulate
+        )
+
+        # The new carry state for the *next* iteration
+        new_carry = (current_he, new_res, has_stopped)
+
+        # scan requires a 'y' output, we don't need it
+        return new_carry, 0.0
+
+    # Run the scan
+    final_carry, _ = jax.lax.scan(scan_body, initial_carry, xs)
+
+    # The final result is the cumulative 'res' from the final state
+    _, final_res, _ = final_carry
+    return final_res
 
 
 @jit
@@ -61,12 +102,12 @@ def get_length_with_offset(he, vertTable: Array, heTable: Array, faceTable: Arra
     return jnp.array([length, he_offset_x1, he_offset_y1])
 
 
-@jit
-def get_perimeter(face, vertTable: Array, heTable: Array, faceTable: Array, width: float, height: float):
+@partial(jit, static_argnums=(4, 5, 6))
+def get_perimeter(face, vertTable: Array, heTable: Array, faceTable: Array, width: float, height: float, max_iter: int):
     def fun(he, res):
         return get_length_with_offset(he, vertTable, heTable, faceTable, width, height)
 
-    return sum_edges(face, heTable, faceTable, fun)[0]
+    return sum_edges(face, heTable, faceTable, fun, max_iter)[0]
 
 
 @jit
@@ -85,12 +126,12 @@ def compute_numerator(he, res, vertTable: Array, heTable: Array, width: float, h
 
 
 # computing area for a face using  ## shoelace formula ##
-@jit
-def get_area(face, vertTable: Array, heTable: Array, faceTable: Array, width: float, height: float):
+@partial(jit, static_argnums=(4, 5, 6))
+def get_area(face, vertTable: Array, heTable: Array, faceTable: Array, width: float, height: float, max_iter: int):
     def fun(he, res):
         return compute_numerator(he, res, vertTable, heTable, width, height)
 
-    return 0.5 * jnp.abs(sum_edges(face, heTable, faceTable, fun)[0])
+    return 0.5 * jnp.abs(sum_edges(face, heTable, faceTable, fun, max_iter)[0])
 
 
 def select_verts_hes_faces(

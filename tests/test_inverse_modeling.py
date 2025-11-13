@@ -1,11 +1,12 @@
 """Test the whole pipeline of bilevel optimization."""
 
+from functools import partial
 from time import perf_counter
 
 import jax.numpy as jnp
 import jax.random
 import optax
-from jax import jit, vmap
+from jax import jit, vmap, Array
 from numpy.testing import assert_allclose
 
 from vertax.cost import cost_v2v
@@ -15,7 +16,7 @@ from vertax.start import create_mesh_from_seeds, load_mesh
 
 
 def test_inverse_modeling_for_regressions() -> None:
-    """Check identical result of a standard test with previous results (october 2025)."""
+    """Check identical result of a standard test with previous results (november 2025)."""
     t_start = perf_counter()
 
     # Settings
@@ -34,18 +35,20 @@ def test_inverse_modeling_for_regressions() -> None:
     patience = 5
     epochs = 2
 
+    MAX_EDGES_IN_ANY_FACE = 20
+
     # Energy function
-    @jit
+    @partial(jit, static_argnums=(5, 6))
     def area_part(face, face_param, vertTable, heTable, faceTable, width: float, height: float):
-        a = get_area(face, vertTable, heTable, faceTable, width, height)
+        a = get_area(face, vertTable, heTable, faceTable, width, height, MAX_EDGES_IN_ANY_FACE)
         return (a - face_param) ** 2
 
-    @jit
+    @partial(jit, static_argnums=(5, 6))
     def hedge_part(he, he_param, vertTable, heTable, faceTable, width: float, height: float):
         edge_lengths = get_length(he, vertTable, heTable, faceTable, width, height)
         return he_param * edge_lengths
 
-    @jit
+    @partial(jit, static_argnums=(3, 4))
     def energy(vertTable, heTable, faceTable, width: float, height: float, vert_params, he_params, face_params):
         K_areas = 20
 
@@ -134,22 +137,22 @@ def test_inverse_modeling_for_regressions() -> None:
 
     # Areas target are the actual target ones at equilibrium (and remain fixed during BO)
     def mapped_fixed_areas_target(face):
-        return get_area(face, vertTable_target, heTable_target, faceTable, width, height)
+        return get_area(face, vertTable_target, heTable_target, faceTable, width, height, MAX_EDGES_IN_ANY_FACE)
 
     fixed_areas_target = vmap(mapped_fixed_areas_target)(jnp.arange(len(faceTable)))
 
     # Redefined energy function (with fixed areas and fixed first tension equal to the target ones)
-    @jit
+    @partial(jit, static_argnums=(4, 5))
     def area_part_v2(face, vertTable, heTable, faceTable, width, height):
-        a = get_area(face, vertTable, heTable, faceTable, width, height)
+        a = get_area(face, vertTable, heTable, faceTable, width, height, MAX_EDGES_IN_ANY_FACE)
         return (a - fixed_areas_target[face]) ** 2
 
-    @jit
+    @partial(jit, static_argnums=(5, 6))
     def hedge_part_v2(he, he_param, vertTable, heTable, faceTable, width: float, height: float):
         edge_lengths = get_length(he, vertTable, heTable, faceTable, width, height)
         return he_param * edge_lengths
 
-    @jit
+    @partial(jit, static_argnums=(3, 4))
     def energy_v2(vertTable, heTable, faceTable, width: float, height: float, vert_params, he_params, face_params):
         K_areas = 20
 
@@ -168,6 +171,7 @@ def test_inverse_modeling_for_regressions() -> None:
         )
 
     for j in range(epochs + 1):
+        t1 = perf_counter()
         print(
             "epoch: "
             + str(j)
@@ -219,14 +223,19 @@ def test_inverse_modeling_for_regressions() -> None:
             beta=0.01,
             method=BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION,  # change to EP, ID, AS
         )
+        print(perf_counter() - t1)
 
     t_end = perf_counter()
     elapsed_times = t_end - t_start
     print(f"Test inverse modelling took {elapsed_times:.2f} s.")
 
+    # To create a new reference for the regression test only
+    # from vertax.start import save_mesh
+    # save_mesh("tests/reference_result_test_inverse_modeling.npz", vertTable, heTable, faceTable)
+
     ref_vertices, ref_edges, ref_faces = load_mesh("tests/reference_result_test_inverse_modeling.npz")
 
-    assert_allclose(vertTable, ref_vertices[:, :-1], rtol=0.001)
+    assert_allclose(vertTable, ref_vertices, rtol=0.001)
     assert_allclose(heTable, ref_edges, rtol=0.001)
     assert_allclose(faceTable, ref_faces, rtol=0.001)
 
