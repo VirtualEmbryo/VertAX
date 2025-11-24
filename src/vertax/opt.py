@@ -480,9 +480,9 @@ def outer_opt(
     opt_state = solver_outer.init(params)
     updates, opt_state = solver_outer.update(grads, opt_state, params)
     updated_params = optax.apply_updates(params, updates)
-    new_vert_params: Array = updated_params["vert_params"]
-    new_he_params: Array = updated_params["he_params"]
-    new_face_params: Array = updated_params["face_params"]
+    new_vert_params: Array = updated_params["vert_params"]  # type: ignore
+    new_he_params: Array = updated_params["he_params"]  # type: ignore
+    new_face_params: Array = updated_params["face_params"]  # type: ignore
 
     return new_vert_params, new_he_params, new_face_params
 
@@ -825,9 +825,9 @@ def outer_eq_prop(
     opt_state = solver_outer.init(params)
     updates, opt_state = solver_outer.update(grads, opt_state, params)
     updated_params = optax.apply_updates(params, updates)
-    new_vert_params: Array = updated_params["vert_params"]
-    new_he_params: Array = updated_params["he_params"]
-    new_face_params: Array = updated_params["face_params"]
+    new_vert_params: Array = updated_params["vert_params"]  # type: ignore
+    new_he_params: Array = updated_params["he_params"]  # type: ignore
+    new_face_params: Array = updated_params["face_params"]  # type: ignore
 
     return new_vert_params, new_he_params, new_face_params
 
@@ -956,9 +956,9 @@ def outer_implicit(
     opt_state = solver_outer.init(params)
     updates, opt_state = solver_outer.update(grads, opt_state, params)
     updated_params = optax.apply_updates(params, updates)
-    new_vert_params: Array = updated_params["vert_params"]
-    new_he_params: Array = updated_params["he_params"]
-    new_face_params: Array = updated_params["face_params"]
+    new_vert_params: Array = updated_params["vert_params"]  # type: ignore
+    new_he_params: Array = updated_params["he_params"]  # type: ignore
+    new_face_params: Array = updated_params["face_params"]  # type: ignore
 
     return new_vert_params, new_he_params, new_face_params
 
@@ -1062,9 +1062,9 @@ def outer_adjoint_state(
     opt_state = solver_outer.init(params)
     updates, opt_state = solver_outer.update(grads, opt_state, params)
     updated_params = optax.apply_updates(params, updates)
-    new_vert_params: Array = updated_params["vert_params"]
-    new_he_params: Array = updated_params["he_params"]
-    new_face_params: Array = updated_params["face_params"]
+    new_vert_params: Array = updated_params["vert_params"]  # type: ignore
+    new_he_params: Array = updated_params["he_params"]  # type: ignore
+    new_face_params: Array = updated_params["face_params"]  # type: ignore
 
     return new_vert_params, new_he_params, new_face_params
 
