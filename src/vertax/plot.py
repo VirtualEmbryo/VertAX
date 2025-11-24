@@ -70,7 +70,7 @@ def plot_mesh(
 
         if flip_x:
             x = tuple(np.array((width,) * len(x)) - x)
-        if flip_y:
+        if not flip_y:
             y = tuple(np.array((height,) * len(y)) - y)
 
         if multicolor:
@@ -117,13 +117,13 @@ def plot_mesh(
                 plt.plot(tuple(np.add(x[i : i + 2], (-width, -width))), y[i : i + 2], "-", color="black")
 
     if vertices:
-        x_all, y_all = zip(*all_verts, strict=False)
-        plt.scatter(x_all, y_all, color="black")
+        all_verts = np.array(all_verts)
+        plt.scatter(all_verts[:, 0], height - all_verts[:, 1], color="black")
 
     plt.xlim([0, width])
     plt.ylim([0, height])
 
-    # plt.gca().set_aspect("equal")
+    plt.gca().set_aspect("equal")
 
     if save:
         os.makedirs(path, exist_ok=True)

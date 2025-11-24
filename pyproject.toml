@@ -20,7 +20,7 @@
         "scikit-image==0.24.0",
         "scipy>=1.16.2",
         "tifffile==2024.12.12",
-]
+    ]
 
     classifiers = [
         "Development Status :: 1 - Planning",
@@ -134,9 +134,7 @@
     filterwarnings = ["error"]
     log_cli_level  = "INFO"
     testpaths      = ["tests"]
+    markers        = ["long: marks tests as slow (deselect with '-m \"not slow\"')"]
 
 [dependency-groups]
-    dev = [
-    "pytest>=8.4.2",
-    "scalene>=1.5.55",
-]
+    dev = ["pytest>=8.4.2", "scalene>=1.5.55"]

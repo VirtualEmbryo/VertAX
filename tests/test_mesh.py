@@ -7,8 +7,8 @@ from numpy.testing import assert_array_equal
 from tifffile import imread
 
 from vertax.pbc import PBCMesh
-from vertax.start import create_mesh_from_seeds, create_mesh_from_image
 from vertax.plot import plot_mesh
+from vertax.start import create_mesh_from_image, create_mesh_from_seeds
 
 
 def test_private_constructor_mesh() -> None:
@@ -43,22 +43,43 @@ def test_compare_pbc_mesh_with_create_mesh_from_seeds() -> None:
     assert_array_equal(my_mesh.faces, faceTable)
 
 
+@pytest.mark.long
 def no_pytest_test_compare_pbc_mesh_with_create_mesh_from_image() -> None:
     """Compare the two from_seeds functions. They should be the same."""
-    # Initial condition
-    img = imread("tests/test_image.tif")
+    plot = False
+    # imread tiff = Y is the first axis, X the second.
+    img = imread("tests/test_image.tif")[:-101, :]  # non rect, odd and pair dimensions
     print("create mesh from image...")
     vertTable, heTable, faceTable = create_mesh_from_image(img)
+    if plot:
+        plot_mesh(
+            vertTable,
+            heTable,
+            faceTable,
+            width=2 * img.shape[1],
+            height=2 * img.shape[0],
+            path="ref_image",
+            save=True,
+            show=False,
+        )
 
-    print("done")
     print("PBC now...")
-    my_mesh = PBCMesh.periodic_voronoi_from_square_image(img)
+    my_mesh = PBCMesh.periodic_from_image(img)
+    if plot:
+        plot_mesh(
+            my_mesh.vertices,
+            my_mesh.edges,
+            my_mesh.faces,
+            width=2 * img.shape[1],
+            height=2 * img.shape[0],
+            path="pbc_image",
+            save=True,
+            show=False,
+        )
 
     assert_array_equal(my_mesh.vertices, vertTable)
     assert_array_equal(my_mesh.edges, heTable)
     assert_array_equal(my_mesh.faces, faceTable)
-
-    plot_mesh(vertTable, heTable, faceTable, width=img.shape[0], height=img.shape[1])
 
 
 if __name__ == "__main__":
