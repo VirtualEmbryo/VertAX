@@ -6,7 +6,7 @@ from time import perf_counter
 import jax.numpy as jnp
 import jax.random
 import optax
-from jax import jit, vmap, Array
+from jax import jit, vmap
 from numpy.testing import assert_allclose
 
 from vertax.cost import cost_v2v
