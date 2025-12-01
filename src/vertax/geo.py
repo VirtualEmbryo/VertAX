@@ -427,3 +427,87 @@ def get_shear_modulus(
     shear_modulus = (jacfwd(jacfwd(get_energy))(0.0)) / ((L_top - L_bottom) * (width))
 
     return shear_modulus
+
+
+# ==========
+# Bounded
+# ==========
+@jit
+def get_edge_length(he, vertTable: Array, heTable: Array):
+    v_source = heTable.at[he, 3].get()
+    v_target = heTable.at[he, 4].get()
+    mask = v_source != 0
+    x0 = vertTable.at[v_source, 0].get()
+    y0 = vertTable.at[v_source, 1].get()
+    x1 = vertTable.at[v_target, 0].get()
+    y1 = vertTable.at[v_target, 1].get()
+
+    return jnp.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2) * mask
+
+
+@jit
+def get_chord_length(he, vertTable: Array, heTable: Array):
+    v_source = heTable.at[he, 5].get()
+    v_target = heTable.at[he, 6].get()
+    mask = v_source != 0
+    x0 = vertTable.at[v_source, 0].get()
+    y0 = vertTable.at[v_source, 1].get()
+    x1 = vertTable.at[v_target, 0].get()
+    y1 = vertTable.at[v_target, 1].get()
+
+    return jnp.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2) * mask
+
+
+@jit
+def get_surface_length(he, vertTable: Array, angTable: Array, heTable: Array):
+    chordlen = get_chord_length(he, vertTable, heTable)
+    angle = angTable.at[he].get()
+
+    return chordlen / jnp.sinc(angle / jnp.pi)
+
+
+@jit
+def area_factor_between_arc_and_chord(angle):
+    sinang = jnp.sin(angle)
+    return (angle - sinang * jnp.cos(angle)) / (2 * sinang**2)
+
+
+@jit
+def compute_contributions(he, vertTable: Array, angTable: Array, heTable: Array):
+    v_source = heTable.at[he, 3].get() + heTable.at[he, 5].get()
+    v_target = heTable.at[he, 4].get() + heTable.at[he, 6].get() - 1
+    x0 = vertTable.at[v_source, 0].get()
+    y0 = vertTable.at[v_source, 1].get()
+    x1 = vertTable.at[v_target, 0].get()
+    y1 = vertTable.at[v_target, 1].get()
+
+    angle = angTable.at[he].get()
+    chordlen = get_chord_length(he, vertTable, heTable)
+
+    return jnp.array([x0 * y1 - x1 * y0, (chordlen**2) * area_factor_between_arc_and_chord(angle)])
+
+
+@jit
+def get_area_bounded(face: int, vertTable: Array, angTable: Array, heTable: Array, faceTable: Array):
+    start_he = faceTable.at[face, 0].get()
+    res_0 = compute_contributions(start_he, vertTable, angTable, heTable)
+    initial_carry = (start_he, res_0, False)
+    xs = jnp.arange(11)
+
+    def scan_body(carry, i):
+        previous_he, previous_res, has_stopped = carry
+        current_he = heTable.at[previous_he, 1].get()
+        is_start_node = current_he == start_he
+        has_stopped = has_stopped | is_start_node
+        contribution = compute_contributions(current_he, vertTable, angTable, heTable)
+        new_res = jax.lax.select(
+            has_stopped,
+            previous_res,  # If stopped, result is unchanged
+            previous_res + contribution,  # If running, accumulate
+        )
+        return (current_he, new_res, has_stopped), 0.0
+
+    final_carry, _ = jax.lax.scan(scan_body, initial_carry, xs)
+    _, final_res, _ = final_carry
+
+    return 0.5 * jnp.sum(jnp.abs(final_res))

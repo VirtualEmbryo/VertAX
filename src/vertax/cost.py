@@ -5,8 +5,11 @@ from jax import jit, vmap, Array
 from jax.numpy import arange, array, diff, einsum, exp, expand_dims, int32, meshgrid, pi, sqrt, stack
 from jax.numpy import sinc as npsinc
 from jax.numpy.fft import ifft2
+from jax.lax import fori_loop
 
 from vertax.geo import get_area
+
+TARGET_RATIO = 2.0
 
 # import matplotlib.pyplot as plt
 
@@ -314,3 +317,83 @@ def cost_areas(
     # (get_perimeter(f, vertTable, heTable, faceTable) - get_perimeter(f, vertTable_target, heTable_target, faceTable_target))**2
     difference = vmap(mapped_fn)(selected_faces)
     return (1.0 / len(difference)) * jnp.sum(difference)
+
+
+@jit
+def cost_ratio(
+    vertTable: Array,
+    angTable: Array | None = None,
+    heTable: Array | None = None,
+    faceTable: Array | None = None,
+    vertTable_target=None,
+    angTable_target=None,
+    heTable_target=None,
+    faceTable_target=None,
+    selected_verts=None,
+    selected_hes=None,
+    selected_faces=None,
+    image_target=None,
+):
+    # Compute pairwise squared distances by broadcasting
+    # diff shape: (n, n, d)
+    diff = vertTable[:, None, :] - vertTable[None, :, :]
+    sq_dists = jnp.sum(diff**2, axis=-1)  # (n, n)
+    distances = jnp.sqrt(sq_dists + 1e-12)  # small eps for numerical stability
+
+    # For each row, get index of farthest point
+    max_distances = jnp.max(distances, axis=1)
+    max_idx_1 = jnp.argmax(max_distances)  # index of row with largest max distance
+    long_axis = max_distances[max_idx_1]  # longest distance (already excludes diagonal)
+    max_idx_2 = jnp.argmax(distances[max_idx_1])  # the farthest point from max_idx_1
+
+    max_point_1 = vertTable[max_idx_1]
+    max_point_2 = vertTable[max_idx_2]
+    long_axis_vector = max_point_2 - max_point_1
+    long_axis_vector = long_axis_vector / (jnp.linalg.norm(long_axis_vector) + 1e-12)
+
+    # Short axis (perpendicular)
+    short_axis_vector = jnp.array([long_axis_vector[1], -long_axis_vector[0]])
+
+    # Project points onto short axis: signed distances
+    # If vertTable is (n,2) this works. If higher dim, modify accordingly.
+    signed_distances_to_long_axis = jnp.dot(vertTable - max_point_1, short_axis_vector)
+
+    short_axis = jnp.max(signed_distances_to_long_axis) - jnp.min(signed_distances_to_long_axis)
+
+    # Numerically stabilize division
+    ratio = long_axis / (short_axis + 1e-12)
+    return (ratio - TARGET_RATIO) ** 2
+
+
+@jit
+def cost_checkerboard(
+    vertTable: Array,
+    angTable: Array,
+    heTable: Array,
+    faceTable: Array,
+    vertTable_target=None,
+    angTable_target=None,
+    heTable_target=None,
+    faceTable_target=None,
+    selected_verts=None,
+    selected_hes=None,
+    selected_faces=None,
+    image_target=None,
+):
+    def body_fun(i, current_len):
+        idx = 2 * i
+        he_twin = heTable[idx, 2]
+        he_face = heTable[idx, 7]
+        he_fate = faceTable[he_face, 1]
+        he_face_twin = heTable[he_twin, 7]
+        he_fate_twin = faceTable[he_face_twin, 1]
+        v_source = heTable[idx, 3] - 2
+        v_target = heTable[idx, 4] - 2
+        pos_source = vertTable[v_source]
+        pos_target = vertTable[v_target]
+        return current_len + jnp.where(
+            jnp.logical_and(he_fate == he_fate_twin, heTable[idx, 3] > 0), jnp.sum((pos_target - pos_source) ** 2), 0.0
+        )
+
+    n_edges = heTable.shape[0] // 2
+    return fori_loop(0, n_edges, body_fun, 0.0)

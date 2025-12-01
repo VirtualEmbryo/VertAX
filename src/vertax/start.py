@@ -9,6 +9,7 @@ from numpy.typing import NDArray
 from scipy.spatial import Voronoi
 
 from vertax.mask_analysis import find_vertices_edges_faces, mask_from_image, pad
+from vertax.plot import plot_bounded_mesh
 
 
 def load_mesh(path: str) -> tuple[Array, Array, Array]:
@@ -36,9 +37,6 @@ def save_mesh(path: str, vertTable: Array, heTable: Array, faceTable: Array) -> 
     """
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(path, allow_pickle=False, vertices=vertTable, edges=heTable, faces=faceTable)
-    # jnp.save(path + "vertTable", vertTable)
-    # jnp.save(path + "heTable", heTable)
-    # jnp.save(path + "faceTable", faceTable)
 
 
 def create_mesh_from_seeds(seeds: Array) -> tuple[Array, Array, Array]:  # noqa: C901
@@ -542,3 +540,264 @@ def create_mesh_from_mask(mask: NDArray) -> tuple[Array, Array, Array]:  # noqa:
         jnp.array(heTable, dtype=np.int32),
         jnp.array(faceTable, dtype=np.int32),
     )
+
+
+# ==========
+# Bounded
+# ==========
+
+
+def load_bounded_mesh(path: str) -> tuple[Array, Array, Array, Array]:
+    """Load a mesh from a file.
+
+    Args:
+        path (str): Path to the mesh file.
+
+    Returns:
+        tuple[Array, Array, Array]: Jax arrays of vertices (2D, float), edges and faces.
+    """
+    mesh_file = np.load(path)
+    return (
+        jnp.array(mesh_file["vertices"]),
+        jnp.array(mesh_file["angles"]),
+        jnp.array(mesh_file["edges"]),
+        jnp.array(mesh_file["faces"]),
+    )
+
+
+def save_bounded_mesh(path: str, vertTable: Array, angTable: Array, heTable: Array, faceTable: Array) -> None:
+    """Save a bounded mesh to a file.
+
+    Args:
+        path (str): Path to the saved file.
+        vertTable (Array): The vertices of the mesh.
+        angTable (Array): The angles of the mesh.
+        heTable (Array): The half-edges of the mesh.
+        faceTable (Array): The faces of the mesh.
+    """
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(path, allow_pickle=False, vertices=vertTable, angles=angTable, edges=heTable, faces=faceTable)
+
+
+def create_bounded_mesh_from_seeds(
+    seeds: Array, path: str = "./", show: bool = False, rng=None
+):  # rng=numpy's random number generator
+    n_cells = len(seeds)  # starting number of seeds must be equal to the desired number of cells (faces)
+    L_box = np.sqrt(n_cells)
+
+    if rng is None:
+        rng = np.random.default_rng()
+
+    while True:
+        success = 0
+        voronoi = Voronoi(seeds)
+
+        vertices = voronoi.vertices
+        edges = voronoi.ridge_vertices
+        faces = voronoi.regions
+
+        inbound_faces = []
+        inbound_vertices = np.zeros(vertices.shape[0], dtype=np.int32)
+        for face in faces:
+            if face:  # the face must not be an empty list
+                if all(item > -1 for item in face):
+                    face_vertices_positions = vertices[face]
+                    if np.all(face_vertices_positions < L_box) and np.all(face_vertices_positions > 0):
+                        inbound_faces.append(face)
+                        inbound_vertices[face] += 1
+
+        # getting rid of faces connected to a single other inbound face (these can be problematic and lead to many special cases later on)
+        while True:
+            num_infaces = len(inbound_faces)
+            del_count = 0
+            for i, face in enumerate(reversed(inbound_faces)):
+                if np.sum(inbound_vertices[face] > 1) <= 2:
+                    inbound_vertices[face] -= 1
+                    del inbound_faces[num_infaces - i - 1]
+                    del_count += 1
+            if del_count == 0:
+                break
+
+        if num_infaces < n_cells:
+            success = 1
+        elif num_infaces > n_cells:
+            success = 2
+        else:
+            for i, face in enumerate(inbound_faces):
+                useful_vertices = []
+                extra_edges = []
+                last_useful = -1
+                incomplete_new_edge = False
+                for vertex in face:
+                    if inbound_vertices[vertex] == 1:
+                        if not incomplete_new_edge:
+                            new_edge = []
+                            new_edge.append(last_useful)
+                            incomplete_new_edge = True
+                    else:
+                        useful_vertices.append(vertex)
+                        last_useful = vertex
+                        if incomplete_new_edge:
+                            new_edge.append(vertex)
+                            extra_edges.append(new_edge)
+                            incomplete_new_edge = False
+                if extra_edges and extra_edges[0][0] == -1:
+                    extra_edges[0][0] = useful_vertices[-1]
+                elif incomplete_new_edge:
+                    new_edge.append(useful_vertices[0])
+                    extra_edges.append(new_edge)
+                edges.extend(extra_edges)
+                inbound_faces[i] = tuple(sorted(useful_vertices))
+            useful_vertices_set = set(np.where(inbound_vertices > 1)[0])
+
+            # HALF EDGE DATA STRUCTURE
+
+            # reciprocating edges
+
+            useful_edges = []
+            for e in edges:
+                if set(e).issubset(useful_vertices_set):
+                    useful_edges.append(tuple(sorted(e)))
+
+            # failing to abide by the following relation results in disconnected topologies
+            if len(useful_edges) != (n_cells - 1) * 3:
+                success = 2
+            else:
+                half_edges = []
+                for e in useful_edges:
+                    half_edges.append(e)
+                    half_edges.append((e[1], e[0]))
+
+                # finding clockwise (or counterclockwise) half edge set for each face
+
+                ordered_edges_inbound_faces = []
+                for face in inbound_faces:
+                    edges_face = []
+                    ### I think scipy give you everything already ordered for finite faces
+                    for f1 in face:
+                        for f2 in face:
+                            if (f1, f2) in useful_edges:
+                                edges_face.append((f1, f2))
+                    i = 0
+                    start_edge = edges_face[i]
+                    ordered_face = [start_edge]
+                    e = start_edge
+                    visited = [e]
+                    while sorted(edges_face) != sorted(visited):
+                        if e[0] == start_edge[1] and e not in visited:
+                            ordered_face.append(e)
+                            start_edge = e
+                            visited.append(e)
+                        if e[1] == start_edge[1] and e not in visited:
+                            ordered_face.append((e[1], e[0]))
+                            start_edge = (e[1], e[0])
+                            visited.append(e)
+                        i += 1
+                        e = edges_face[i % len(face)]
+
+                    order = 0
+                    for e in ordered_face:
+                        idx0 = e[0]
+                        idx1 = e[1]
+
+                        order += (vertices[idx1][0] - vertices[idx0][0]) * (vertices[idx1][1] + vertices[idx0][1])
+
+                    if order < 0:
+                        ordered_edges_inbound_faces.append(ordered_face)
+                    if order > 0:
+                        new_ordered_face = []
+                        for e in reversed(ordered_face):
+                            new_ordered_face.append((e[1], e[0]))
+                        ordered_edges_inbound_faces.append(new_ordered_face)
+                    if order == 0:
+                        print("\nError: no order detected for face " + str(face) + "\n")
+                        exit()
+
+                useful_vertices_list = list(useful_vertices_set)
+                vertTable = np.zeros((len(useful_vertices_list), 2))
+                for i, idx in enumerate(useful_vertices_list):
+                    pos = vertices[idx]
+                    vertTable[i][0] = pos[0]  # x pos vert
+                    vertTable[i][1] = pos[1]  # y pos vert
+
+                faceTable = np.zeros((len(inbound_faces), 1), dtype=np.int32)
+                for i, hedges_face in enumerate(ordered_edges_inbound_faces):
+                    for j, he in enumerate(half_edges):
+                        if he == hedges_face[0]:
+                            faceTable[i] = j  # he_inside
+                faceTable = fate_selection(faceTable, 2, rng)
+
+                L_he = len(half_edges)
+                heTable = np.zeros((L_he, 8), dtype=np.int32)
+                heTable[:, 4] = 1
+                heTable[:, 6] = 1
+                relevant_twins = []
+                for i, he in enumerate(half_edges):
+                    belongs_to_any_face = False
+                    for hedges_face in ordered_edges_inbound_faces:
+                        if he in hedges_face:
+                            idx = hedges_face.index(he)
+                            heTable[i][0] = half_edges.index(hedges_face[(idx - 1) % len(hedges_face)])  # he_prev
+                            heTable[i][1] = half_edges.index(hedges_face[(idx + 1) % len(hedges_face)])  # he_next
+                            heTable[i][3] = useful_vertices_list.index(he[0]) + 2  # vert source inner edges
+                            heTable[i][4] = useful_vertices_list.index(he[1]) + 2  # vert target inner edges
+                            heTable[i][7] = ordered_edges_inbound_faces.index(hedges_face)  # face
+                            belongs_to_any_face = True
+                            break
+                    twin_idx = half_edges.index((he[1], he[0]))
+                    heTable[i][2] = twin_idx  # he twin
+                    if not belongs_to_any_face:
+                        relevant_twins.append(twin_idx)
+
+                angTable = np.ones(L_he // 2)
+                for i, tidx in enumerate(relevant_twins):
+                    angTable[tidx // 2] = rng.random() * (np.pi / 2 - 0.018) + 0.017
+                    heTable[tidx][5] = heTable[tidx][3]  # vert source surface edges
+                    heTable[tidx][6] = heTable[tidx][4]  # vert target surface edges
+                    heTable[tidx][3] = 0
+                    heTable[tidx][4] = 1
+
+                if show:
+                    plot_bounded_mesh(
+                        vertTable,
+                        angTable,
+                        heTable,
+                        faceTable,
+                        L_box,
+                        path=path + "simulation_init/",
+                        name="simulation_init",
+                        save=True,
+                    )
+
+                Path(path + "simulation_init").mkdir(exist_ok=True)
+                np.savetxt(path + "simulation_init/vertTable.csv", vertTable, delimiter="\t", fmt="%1.18f")
+                np.savetxt(path + "simulation_init/angTable.csv", angTable, delimiter="\t", fmt="%1.18f")
+                np.savetxt(path + "simulation_init/faceTable.csv", faceTable, delimiter="\t", fmt="%1.0d")
+                np.savetxt(path + "simulation_init/heTable.csv", heTable, delimiter="\t", fmt="%1.0d")
+
+                np.save(path + "simulation_init/vertTable", vertTable)
+                np.save(path + "simulation_init/angTable", angTable)
+                np.save(path + "simulation_init/faceTable", faceTable)
+                np.save(path + "simulation_init/heTable", heTable)
+
+                vertTable = jnp.array(vertTable)
+                angTable = jnp.array(angTable)
+                faceTable = jnp.array(faceTable)
+                heTable = jnp.array(heTable)
+
+                return vertTable, angTable, heTable, faceTable
+
+        if success == 1:
+            seeds = np.vstack([seeds, L_box * rng.random((1, 2))])
+        else:
+            seeds = L_box * rng.random((n_cells, 2))
+
+
+def fate_selection(faceTable, n_fates, rng):
+    n_cells = faceTable.size
+    n_cells_per_fate = n_cells // n_fates
+    n_cells_left = n_cells % n_fates
+    cell_fates = np.repeat(np.arange(n_fates), n_cells_per_fate)
+    cell_fates = np.concatenate([cell_fates, np.arange(n_cells_left)])
+    rng.shuffle(cell_fates)
+    return np.hstack([faceTable, cell_fates[:, None]])

@@ -1,7 +1,10 @@
 import jax.numpy as jnp
 from jax import Array, jit, vmap
+import jax
 
-from vertax.geo import get_area, get_length, get_perimeter
+from vertax.geo import get_area, get_length, get_perimeter, get_area_bounded, get_surface_length, get_edge_length
+
+TARGET_AREA = 0.6
 
 
 @jit
@@ -98,3 +101,56 @@ def energy_line_tensions(
     # areas_part = vmap(mapped_areas_part)(selected_faces, face_params[selected_faces])
     # hedges_part = vmap(mapped_hedges_part)(selected_hes, he_params[selected_hes])
     return jnp.sum(hedges_part) + (0.5 * K_areas) * jnp.sum(areas_part)
+
+
+# ==========
+# Bounded
+# ==========
+@jit
+def cell_area_energy(face: float, vertTable: Array, angTable: Array, heTable: Array, faceTable: Array):
+    area = get_area_bounded(face, vertTable, angTable, heTable, faceTable)
+    return (area - TARGET_AREA) ** 2
+
+
+@jit
+def surface_edge_energy(edge: float, tension: Array, vertTable: Array, angTable: Array, heTable: Array):
+    length = get_surface_length(edge, vertTable, angTable, heTable)
+    return length * tension
+
+
+@jit
+def inner_edge_energy(edge: float, tension: Array, vertTable: Array, heTable: Array):
+    length = get_edge_length(edge, vertTable, heTable)
+    return length * tension
+
+
+@jit
+def energy_bounded(
+    vertTable,
+    angTable,
+    heTable,
+    faceTable,
+    selected_verts,
+    selected_hes,
+    selected_faces,
+    vert_params,
+    he_params,
+    face_params,
+):
+    num_faces = faceTable.shape[0]
+    faces = jnp.arange(num_faces)
+    num_edges = angTable.size
+    num_half_edges = num_edges * 2
+    unique_edges = jnp.arange(num_edges) * 2
+    edges = jnp.arange(num_half_edges)
+    vertTable = jnp.vstack([jnp.array([[0.0, 0.0], [1.0, 1.0]]), vertTable])
+    angTable = jnp.repeat(angTable, 2)
+    he_params = jax.nn.sigmoid(he_params) + 1
+    mapped_fn_area = lambda face, area: cell_area_energy(face, vertTable, angTable, heTable, faceTable)
+    face_params_broadcasted = jnp.broadcast_to(face_params, (len(faces),))
+    cell_area_energies = jnp.sum(vmap(mapped_fn_area)(faces, face_params_broadcasted))
+    mapped_fn_inner = lambda edge, tension: inner_edge_energy(edge, tension, vertTable, heTable)
+    inner_edge_energies = jnp.sum(vmap(mapped_fn_inner)(unique_edges, he_params))
+    mapped_fn_surface = lambda edge, tension: surface_edge_energy(edge, tension, vertTable, angTable, heTable)
+    surface_edge_energies = jnp.sum(vmap(mapped_fn_surface)(edges, jnp.repeat(he_params, 2)))
+    return 20 * cell_area_energies + inner_edge_energies + surface_edge_energies
