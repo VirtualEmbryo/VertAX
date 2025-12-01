@@ -1,11 +1,13 @@
+"""Inverse modelling test for the bounded case."""
+
 # Package imports
-import numpy as np
 import jax.numpy as jnp
+import numpy as np
 import optax
 
 from vertax.cost import cost_ratio
 from vertax.energy import energy_bounded
-from vertax.opt import bilevel_opt_bounded, inner_opt_bounded
+from vertax.opt_bounded import bilevel_opt_bounded, inner_opt_bounded
 from vertax.plot import plot_bounded_mesh
 from vertax.start import create_bounded_mesh_from_seeds
 

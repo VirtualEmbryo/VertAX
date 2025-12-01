@@ -1,14 +1,15 @@
 """Abstract mesh module."""
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, NoReturn, Self, TypeVar, Callable
+from typing import Any, NoReturn, Self, TypeVar
 
 import jax.numpy as jnp
 import numpy as np
-from jax import Array
 import optax
+from jax import Array
 
-from vertax.opt import BilevelOptimizationMethod, inner_opt, bilevel_opt
+from vertax.opt import BilevelOptimizationMethod, bilevel_opt, inner_opt
 
 T = TypeVar("T")
 type InnerLossFunction = Callable[[Array, Array, Array, float, float, Array, Array, Array], float]

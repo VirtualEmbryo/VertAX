@@ -1,14 +1,23 @@
-import jax.numpy as jnp
-from jax import Array, jit, vmap
-import jax
+"""Energy related functions."""
 
-from vertax.geo import get_area, get_length, get_perimeter, get_area_bounded, get_surface_length, get_edge_length
+from typing import TYPE_CHECKING
+
+import jax
+import jax.numpy as jnp
+from jax import jit, vmap
+
+from vertax.geo import get_area, get_area_bounded, get_edge_length, get_length, get_perimeter, get_surface_length
+
+if TYPE_CHECKING:
+    from jax import Array
 
 TARGET_AREA = 0.6
 
 
 @jit
-def cell_energy(face, face_param, vertTable, heTable, faceTable, width: float, height: float):
+def _cell_energy(
+    face: int, face_param: Array, vertTable: Array, heTable: Array, faceTable: Array, width: float, height: float
+) -> float:
     area = get_area(face, vertTable, heTable, faceTable, width, height)
     perimeter = get_perimeter(face, vertTable, heTable, faceTable, width, height)
     return ((area - 1) ** 2) + ((perimeter - face_param) ** 2)
@@ -29,7 +38,7 @@ def energy_shape_factor_homo(
     face_params,
 ):
     def mapped_fn(face, param):
-        return cell_energy(face, param, vertTable, heTable, faceTable, width, height)
+        return _cell_energy(face, param, vertTable, heTable, faceTable, width, height)
 
     face_params_broadcasted = jnp.broadcast_to(face_params, (len(faceTable),) + face_params.shape[1:])
     cell_energies = vmap(mapped_fn)(jnp.arange(len(faceTable)), face_params_broadcasted)
@@ -51,7 +60,7 @@ def energy_shape_factor_hetero(
     face_params,
 ):
     def mapped_fn(face, param):
-        return cell_energy(face, param, vertTable, heTable, faceTable, width, height)
+        return _cell_energy(face, param, vertTable, heTable, faceTable, width, height)
 
     cell_energies = vmap(mapped_fn)(selected_faces, face_params[selected_faces])
     # cell_energies = vmap(mapped_fn)(jnp.arange(len(faceTable)), face_params)

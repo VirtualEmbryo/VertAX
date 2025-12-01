@@ -498,7 +498,7 @@ def plot_bounded_mesh(
     show=True,
 ):
     if fates:
-        cmap = get_cmap(jnp.max(faceTable[:, 1]) + 1, name="viridis")
+        cmap = get_cmap(np.max(faceTable[:, 1]) + 1, name="viridis")
     else:
         cmap = get_cmap(faceTable.shape[0])
     draw_curve_threshold = 0.01  # radians. Must be above 0 to avoid overcomplicating a simple plot

@@ -1,15 +1,21 @@
 """Module for mesh creation, from given seeds or an image."""
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
 import numpy as np
-from jax import Array
-from numpy.typing import NDArray
 from scipy.spatial import Voronoi
 
 from vertax.mask_analysis import find_vertices_edges_faces, mask_from_image, pad
 from vertax.plot import plot_bounded_mesh
+
+if TYPE_CHECKING:
+    from jax import Array
+    from matplotlib.pylab import Generator
+    from numpy.typing import NDArray
 
 
 def load_mesh(path: str) -> tuple[Array, Array, Array]:
@@ -579,9 +585,19 @@ def save_bounded_mesh(path: str, vertTable: Array, angTable: Array, heTable: Arr
     np.savez_compressed(path, allow_pickle=False, vertices=vertTable, angles=angTable, edges=heTable, faces=faceTable)
 
 
-def create_bounded_mesh_from_seeds(
-    seeds: Array, path: str = "./", show: bool = False, rng=None
-):  # rng=numpy's random number generator
+def create_bounded_mesh_from_seeds(  # noqa: C901
+    seeds: Array, path: str = "./", show: bool = False, rng: Generator | None = None
+) -> tuple[Array, Array, Array, Array]:  # rng=numpy's random number generator
+    """Create a bounded Mesh from a list of seeds.
+
+    The seeds are assumed to have positive x and y positions.
+
+    Args:
+        seeds (Array[float32]): jax float array of seed positions of shape (nbSeeds, 2).
+        path (str): where to save the mesh data.
+        show (bool): whether to plot the mesh or not.
+        rng (Generator|None): random number generator to add new seeds if needed, decide on cell fates...
+    """
     n_cells = len(seeds)  # starting number of seeds must be equal to the desired number of cells (faces)
     L_box = np.sqrt(n_cells)
 
@@ -599,14 +615,14 @@ def create_bounded_mesh_from_seeds(
         inbound_faces = []
         inbound_vertices = np.zeros(vertices.shape[0], dtype=np.int32)
         for face in faces:
-            if face:  # the face must not be an empty list
-                if all(item > -1 for item in face):
-                    face_vertices_positions = vertices[face]
-                    if np.all(face_vertices_positions < L_box) and np.all(face_vertices_positions > 0):
-                        inbound_faces.append(face)
-                        inbound_vertices[face] += 1
+            if face and all(item > -1 for item in face):  # the face must not be an empty list
+                face_vertices_positions = vertices[face]
+                if np.all(face_vertices_positions < L_box) and np.all(face_vertices_positions > 0):
+                    inbound_faces.append(face)
+                    inbound_vertices[face] += 1
 
-        # getting rid of faces connected to a single other inbound face (these can be problematic and lead to many special cases later on)
+        # getting rid of faces connected to a single other inbound face
+        # (these can be problematic and lead to many special cases later on)
         while True:
             num_infaces = len(inbound_faces)
             del_count = 0
@@ -628,10 +644,11 @@ def create_bounded_mesh_from_seeds(
                 extra_edges = []
                 last_useful = -1
                 incomplete_new_edge = False
+                new_edge = []  # now there
                 for vertex in face:
                     if inbound_vertices[vertex] == 1:
                         if not incomplete_new_edge:
-                            new_edge = []
+                            # new_edge = []  # previously here
                             new_edge.append(last_useful)
                             incomplete_new_edge = True
                     else:
@@ -654,10 +671,7 @@ def create_bounded_mesh_from_seeds(
 
             # reciprocating edges
 
-            useful_edges = []
-            for e in edges:
-                if set(e).issubset(useful_vertices_set):
-                    useful_edges.append(tuple(sorted(e)))
+            useful_edges = [tuple(sorted(e)) for e in edges if set(e).issubset(useful_vertices_set)]
 
             # failing to abide by the following relation results in disconnected topologies
             if len(useful_edges) != (n_cells - 1) * 3:
@@ -672,12 +686,9 @@ def create_bounded_mesh_from_seeds(
 
                 ordered_edges_inbound_faces = []
                 for face in inbound_faces:
-                    edges_face = []
                     ### I think scipy give you everything already ordered for finite faces
-                    for f1 in face:
-                        for f2 in face:
-                            if (f1, f2) in useful_edges:
-                                edges_face.append((f1, f2))
+                    edges_face = [(f1, f2) for f1 in face for f2 in face if (f1, f2) in useful_edges]
+
                     i = 0
                     start_edge = edges_face[i]
                     ordered_face = [start_edge]
@@ -705,10 +716,7 @@ def create_bounded_mesh_from_seeds(
                     if order < 0:
                         ordered_edges_inbound_faces.append(ordered_face)
                     if order > 0:
-                        new_ordered_face = []
-                        for e in reversed(ordered_face):
-                            new_ordered_face.append((e[1], e[0]))
-                        ordered_edges_inbound_faces.append(new_ordered_face)
+                        ordered_edges_inbound_faces.append([(e[1], e[0]) for e in reversed(ordered_face)])
                     if order == 0:
                         print("\nError: no order detected for face " + str(face) + "\n")
                         exit()
@@ -725,7 +733,7 @@ def create_bounded_mesh_from_seeds(
                     for j, he in enumerate(half_edges):
                         if he == hedges_face[0]:
                             faceTable[i] = j  # he_inside
-                faceTable = fate_selection(faceTable, 2, rng)
+                faceTable = _fate_selection(faceTable, 2, rng)
 
                 L_he = len(half_edges)
                 heTable = np.zeros((L_he, 8), dtype=np.int32)
@@ -750,7 +758,7 @@ def create_bounded_mesh_from_seeds(
                         relevant_twins.append(twin_idx)
 
                 angTable = np.ones(L_he // 2)
-                for i, tidx in enumerate(relevant_twins):
+                for tidx in relevant_twins:
                     angTable[tidx // 2] = rng.random() * (np.pi / 2 - 0.018) + 0.017
                     heTable[tidx][5] = heTable[tidx][3]  # vert source surface edges
                     heTable[tidx][6] = heTable[tidx][4]  # vert target surface edges
@@ -787,13 +795,10 @@ def create_bounded_mesh_from_seeds(
 
                 return vertTable, angTable, heTable, faceTable
 
-        if success == 1:
-            seeds = np.vstack([seeds, L_box * rng.random((1, 2))])
-        else:
-            seeds = L_box * rng.random((n_cells, 2))
+        seeds = np.vstack([seeds, L_box * rng.random((1, 2))]) if success == 1 else L_box * rng.random((n_cells, 2))  # type: ignore
 
 
-def fate_selection(faceTable, n_fates, rng):
+def _fate_selection(faceTable: NDArray, n_fates: int, rng: Generator) -> NDArray:
     n_cells = faceTable.size
     n_cells_per_fate = n_cells // n_fates
     n_cells_left = n_cells % n_fates

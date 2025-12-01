@@ -88,7 +88,7 @@ def get_length(he, vertTable: Array, heTable: Array, faceTable: Array, width: fl
 
 
 @jit
-def get_length_with_offset(he, vertTable: Array, heTable: Array, faceTable: Array, width: float, height: float):
+def get_length_with_offset(he: int, vertTable: Array, heTable: Array, faceTable: Array, width: float, height: float):
     # L_box = jnp.sqrt(len(faceTable))
     v_source = heTable.at[he, 3].get()
     v_target = heTable.at[he, 4].get()
@@ -127,7 +127,7 @@ def compute_numerator(he, res, vertTable: Array, heTable: Array, width: float, h
 
 # computing area for a face using  ## shoelace formula ##
 @partial(jit, static_argnums=(4, 5, 6))
-def get_area(face, vertTable: Array, heTable: Array, faceTable: Array, width: float, height: float, max_iter: int):
+def get_area(face: int, vertTable: Array, heTable: Array, faceTable: Array, width: float, height: float, max_iter: int):
     def fun(he, res):
         return compute_numerator(he, res, vertTable, heTable, width, height)
 
