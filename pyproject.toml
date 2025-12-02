@@ -9,9 +9,10 @@
     description = "Optimization of vertex models."
     authors = [{ name = "Alessandro Pasqui", email = "alessandro.pasqui@college-de-france.fr" }]
     readme = "README.md"
-    requires-python = ">=3.13"
+    requires-python = ">=3.11"
     dependencies = [
         "cellpose==3.1.0",
+        "jax>=0.4.34",
         "jaxlib==0.4.34",
         "jaxopt==0.8.3",
         "matplotlib==3.8.0",
@@ -20,7 +21,7 @@
         "scikit-image==0.24.0",
         "scipy>=1.16.2",
         "tifffile==2024.12.12",
-    ]
+]
 
     classifiers = [
         "Development Status :: 1 - Planning",
