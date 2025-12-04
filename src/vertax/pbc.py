@@ -42,6 +42,36 @@ class PBCMesh(Mesh):
         """Do not call the constructor."""
         super().__init__()
 
+        self.width: float = 0
+        self.height: float = 0
+
+    @classmethod
+    def copy_mesh(cls, other_mesh: Self) -> Self:
+        """Copy all parameters from another mesh in a new mesh."""
+        mesh = cls._create()
+        mesh.vertices = other_mesh.vertices.copy()
+        mesh.edges = other_mesh.edges.copy()
+        mesh.faces = other_mesh.faces.copy()
+        mesh.width = other_mesh.width
+        mesh.height = other_mesh.height
+        mesh.vertices_params = other_mesh.vertices_params.copy()
+        mesh.edges_params = other_mesh.edges_params.copy()
+        mesh.faces_params = other_mesh.faces_params.copy()
+        mesh.vertices_target = other_mesh.vertices_target.copy()
+        mesh.edges_target = other_mesh.edges_target.copy()
+        mesh.faces_target = other_mesh.faces_target.copy()
+        mesh.image_target = other_mesh.image_target.copy()
+        mesh.bilevel_optimization_method = other_mesh.bilevel_optimization_method
+        mesh.beta = other_mesh.beta
+        mesh.min_dist_T1 = other_mesh.min_dist_T1
+        mesh.max_nb_iterations = other_mesh.max_nb_iterations
+        mesh.tolerance = other_mesh.tolerance
+        mesh.patience = other_mesh.patience
+        mesh.inner_solver = other_mesh.inner_solver
+        mesh.outer_solver = other_mesh.outer_solver
+
+        return mesh
+
     def get_length(self, half_edge_id: int) -> float:
         """Get the length of an edge."""
         return float(
