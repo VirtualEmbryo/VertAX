@@ -1,13 +1,16 @@
 """Periodic Boundary Condition on a mesh."""
 
 from collections.abc import Callable
-from typing import Self
+from typing import Literal, Self
 
 import jax
 import jax.numpy as jnp
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from jax import Array
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from numpy.typing import NDArray
 from scipy.spatial import Voronoi
 
@@ -15,7 +18,7 @@ from vertax.geo import get_area, get_length, get_length_with_offset, get_perimet
 from vertax.mask_analysis import find_vertices_edges_faces, mask_from_image, pad
 from vertax.mesh import Mesh
 from vertax.opt import bilevel_opt, inner_opt
-from vertax.plot import get_cmap
+from vertax.plot import EdgePlot, FacePlot, VertexPlot, add_colorbar, adjust_lightness, get_cmap
 
 InnerLossFunction = Callable[[Array, Array, Array, Array, Array, Array], Array]
 OuterLossFunction = Callable[
@@ -46,6 +49,7 @@ class PBCMesh(Mesh):
 
         self.width: float = 0
         self.height: float = 0
+        self.MAX_EDGES_IN_ANY_FACE: int = 20
 
     @classmethod
     def copy_mesh(cls, other_mesh: Self) -> Self:
@@ -71,30 +75,45 @@ class PBCMesh(Mesh):
         mesh.patience = other_mesh.patience
         mesh.inner_solver = other_mesh.inner_solver
         mesh.outer_solver = other_mesh.outer_solver
+        mesh.MAX_EDGES_IN_ANY_FACE = other_mesh.MAX_EDGES_IN_ANY_FACE
 
         return mesh
 
-    def get_length(self, half_edge_id: int) -> float:
+    def get_length(self, half_edge_id: Array) -> Array:
         """Get the length of an edge."""
-        return float(
-            get_length(half_edge_id, self.vertices, self.edges, self.faces, self.width, self.height)
-        )  # if bug maybe remove the conversion to a float.
 
-    def get_length_with_offset(self, half_edge_id: int) -> Array:
+        def _get_length(half_edge_id: Array) -> Array:
+            return get_length(half_edge_id, self.vertices, self.edges, self.faces, self.width, self.height)
+
+        return jax.vmap(_get_length)(half_edge_id)
+
+    def get_length_with_offset(self, half_edge_id: Array) -> Array:
         """Get the length of an edge along with its offsets in an array (length, offset x, offset y)."""
-        return get_length_with_offset(half_edge_id, self.vertices, self.edges, self.faces, self.width, self.height)
 
-    def get_perimeter(self, face_id: int) -> float:
+        def _get_length_with_offset(half_edge_id: Array) -> Array:
+            return get_length_with_offset(half_edge_id, self.vertices, self.edges, self.faces, self.width, self.height)
+
+        return jax.vmap(_get_length_with_offset)(half_edge_id)
+
+    def get_perimeter(self, face_id: Array) -> Array:
         """Get the perimeter of a face."""
-        return float(
-            get_perimeter(face_id, self.vertices, self.edges, self.faces, self.width, self.height)
-        )  # if bug maybe remove the conversion to a float.
 
-    def get_area(self, face_id: int) -> float:
+        def _get_perimeter(face_id: Array) -> Array:
+            return get_perimeter(
+                face_id, self.vertices, self.edges, self.faces, self.width, self.height, self.MAX_EDGES_IN_ANY_FACE
+            )
+
+        return jax.vmap(_get_perimeter)(face_id)
+
+    def get_area(self, face_id: Array) -> Array:
         """Get the area of a face."""
-        return float(
-            get_area(face_id, self.vertices, self.edges, self.faces, self.width, self.height)
-        )  # if bug maybe remove the conversion to a float.
+
+        def _get_area(face_id: Array) -> Array:
+            return get_area(
+                face_id, self.vertices, self.edges, self.faces, self.width, self.height, self.MAX_EDGES_IN_ANY_FACE
+            )
+
+        return jax.vmap(_get_area)(face_id)
 
     def update_boundary_conditions(self) -> None:
         """Force periodic boundary conditions again after an update."""
@@ -437,111 +456,28 @@ class PBCMesh(Mesh):
 
     def plot(
         self,
-        show_edges: bool = True,
-        show_vertices: bool = True,
+        vertex_plot: VertexPlot = VertexPlot.BLACK,
+        edge_plot: EdgePlot = EdgePlot.BLACK,
+        face_plot: FacePlot = FacePlot.MULTICOLOR,
         show: bool = True,
         save: bool = False,
         save_path: str = "pbc_mesh.png",
+        faces_cmap_name: str = "cividis",
+        edges_cmap_name: str = "hot",
+        edges_width: float = 2,
+        vertices_cmap_name: str = "spring",
+        vertices_size: float = 20,
     ) -> None:
         """Plot the mesh."""
-        vertTable = self.vertices
-        heTable = self.edges
-        faceTable = self.faces
-        width = self.width
-        height = self.height
+        fig, ax = plt.subplots()
+        self._plot_faces(fig, ax, face_plot, faces_cmap_name)
+        self._plot_edges(fig, ax, edge_plot, edges_cmap_name, edges_width)
+        self._plot_vertices(fig, ax, vertex_plot, vertices_cmap_name, vertices_size)
 
-        cmap = get_cmap(len(faceTable))
-        all_verts = []
-        for face in range(len(faceTable)):
-            start_he = faceTable[face]
-            he = start_he
+        plt.xlim([0, self.width])
+        plt.ylim([0, self.height])
 
-            v_source = heTable[he][3]
-            verts_sources = np.array([vertTable[v_source]])
-            all_verts.append(vertTable[v_source])
-
-            he_offset_x = heTable[he][6]
-            he_offset_y = heTable[he][7]
-            sum0_offsets = he_offset_x
-            sum1_offsets = he_offset_y
-
-            he = heTable[he][1]
-
-            while he != start_he:
-                v_source = heTable[he][3]
-
-                all_verts.append(vertTable[v_source])
-
-                verts_sources = np.concatenate(
-                    (
-                        verts_sources,
-                        (np.array([vertTable[v_source]]) + np.array([sum0_offsets * width, sum1_offsets * height])),
-                    ),
-                    axis=0,
-                )
-
-                he_offset_x = heTable[he][6]
-                he_offset_y = heTable[he][7]
-                sum0_offsets += he_offset_x
-                sum1_offsets += he_offset_y
-
-                he = heTable[he][1]
-
-            v_source = heTable[he][3]
-            verts_sources = np.concatenate((verts_sources, (np.array([vertTable[v_source]]))), axis=0)
-            x, y = zip(*verts_sources, strict=False)
-            y = tuple(np.array((height,) * len(y)) - y)
-
-            plt.fill(x, y, color=cmap(face), alpha=0.5)
-            plt.fill(np.add(x, width), np.add(y, height), color=cmap(face), alpha=0.5)
-            plt.fill(np.add(x, -width), np.add(y, -height), color=cmap(face), alpha=0.5)
-            plt.fill(np.add(x, -width), np.add(y, height), color=cmap(face), alpha=0.5)
-            plt.fill(np.add(x, width), np.add(y, -height), color=cmap(face), alpha=0.5)
-            plt.fill(x, np.add(y, height), color=cmap(face), alpha=0.5)
-            plt.fill(x, np.add(y, -height), color=cmap(face), alpha=0.5)
-            plt.fill(np.add(x, width), y, color=cmap(face), alpha=0.5)
-            plt.fill(np.add(x, -width), y, color=cmap(face), alpha=0.5)
-
-            if show_edges:
-                for i in range(0, len(x) - 1, 1):
-                    plt.plot(x[i : i + 2], y[i : i + 2], "-", color="black")
-                    plt.plot(
-                        tuple(np.add(x[i : i + 2], (width, width))),
-                        tuple(np.add(y[i : i + 2], (height, height))),
-                        "-",
-                        color="black",
-                    )
-                    plt.plot(
-                        tuple(np.add(x[i : i + 2], (-width, -width))),
-                        tuple(np.add(y[i : i + 2], (-height, -height))),
-                        "-",
-                        color="black",
-                    )
-                    plt.plot(
-                        tuple(np.add(x[i : i + 2], (-width, -width))),
-                        tuple(np.add(y[i : i + 2], (height, height))),
-                        "-",
-                        color="black",
-                    )
-                    plt.plot(
-                        tuple(np.add(x[i : i + 2], (width, width))),
-                        tuple(np.add(y[i : i + 2], (-height, -height))),
-                        "-",
-                        color="black",
-                    )
-                    plt.plot(x[i : i + 2], tuple(np.add(y[i : i + 2], (height, height))), "-", color="black")
-                    plt.plot(x[i : i + 2], tuple(np.add(y[i : i + 2], (-height, -height))), "-", color="black")
-                    plt.plot(tuple(np.add(x[i : i + 2], (width, width))), y[i : i + 2], "-", color="black")
-                    plt.plot(tuple(np.add(x[i : i + 2], (-width, -width))), y[i : i + 2], "-", color="black")
-
-        if show_vertices:
-            all_verts = np.array(all_verts)
-            plt.scatter(all_verts[:, 0], height - all_verts[:, 1], color="black")
-
-        plt.xlim([0, width])
-        plt.ylim([0, height])
-
-        plt.gca().set_aspect("equal")
+        ax.set_aspect(self.height / self.width)
 
         if save:
             plt.savefig(save_path)
@@ -550,6 +486,194 @@ class PBCMesh(Mesh):
             plt.show()
 
         plt.clf()
+
+    def _plot_faces(self, fig: Figure, ax: Axes, face_plot: FacePlot, faces_cmap_name: str) -> None:
+        multicolor_cmap = self._get_multicolor_face_cmap()
+        faces_cmap = matplotlib.colormaps.get_cmap(faces_cmap_name)
+
+        v_max = 1
+        v_min = 0
+        values = jnp.array([1])
+        # set the correct colorbar if needed
+        # Get values, min and max
+        match face_plot:
+            case FacePlot.FACE_PAREMETER:
+                values = self.faces_params
+            case FacePlot.AREA:
+                values = self.get_area(jnp.arange(self.nb_faces))
+            case FacePlot.PERIMETER:
+                values = self.get_perimeter(jnp.arange(self.nb_faces))
+        v_max = float(values.max())
+        v_min = float(values.min())
+        match face_plot:
+            case FacePlot.MULTICOLOR | FacePlot.WHITE:
+                pass
+            case _:
+                add_colorbar(fig, ax, v_min, v_max, faces_cmap)
+
+        # Draw each face
+        for face in range(len(self.faces)):
+            match face_plot:
+                # Find correct color depending on chosen colormap
+                case FacePlot.MULTICOLOR:
+                    color = multicolor_cmap(face)
+                case FacePlot.WHITE:
+                    color = (1, 1, 1, 1)
+                case _:
+                    norm_val = 1 if v_max == v_min else (values[face] - v_min) / (v_max - v_min)
+                    color = faces_cmap(norm_val)
+            # Find face's vertices and draw the corresponding polygon.
+            face_vertices = self._get_face_vertices(face)
+            self._draw_face(ax, face_vertices, color)
+
+    def _get_face_vertices(self, face: int) -> NDArray:
+        """Get all vertices positions corresponding to a face."""
+        start_he = self.faces[face]
+        he = start_he
+
+        source_vertex_id = self.edges[he][3]
+        verts_sources = np.array([self.vertices[source_vertex_id]])
+        # all_verts.append(self.vertices[v_source])
+
+        he_offset_x = self.edges[he][6]
+        he_offset_y = self.edges[he][7]
+        sum0_offsets = he_offset_x
+        sum1_offsets = he_offset_y
+
+        he = self.edges[he][1]
+
+        while he != start_he:
+            source_vertex_id = self.edges[he][3]
+
+            # all_verts.append(self.vertices[v_source])
+
+            verts_sources = np.concatenate(
+                (
+                    verts_sources,
+                    (
+                        np.array([self.vertices[source_vertex_id]])
+                        + np.array([sum0_offsets * self.width, sum1_offsets * self.height])
+                    ),
+                ),
+                axis=0,
+            )
+
+            he_offset_x = self.edges[he][6]
+            he_offset_y = self.edges[he][7]
+            sum0_offsets += he_offset_x
+            sum1_offsets += he_offset_y
+
+            he = self.edges[he][1]
+
+        source_vertex_id = self.edges[he][3]
+        verts_sources = np.concatenate((verts_sources, (np.array([self.vertices[source_vertex_id]]))), axis=0)
+        return verts_sources
+
+    def _draw_face(self, ax: Axes, face_vertices: NDArray, color: tuple[float, float, float, float] | NDArray) -> None:
+        x = face_vertices[:, 0]
+        y = self.height - face_vertices[:, 1]
+
+        ax.fill(x, y, color=color)
+        ax.fill(np.add(x, self.width), np.add(y, self.height), color=color)
+        ax.fill(np.add(x, -self.width), np.add(y, -self.height), color=color)
+        ax.fill(np.add(x, -self.width), np.add(y, self.height), color=color)
+        ax.fill(np.add(x, self.width), np.add(y, -self.height), color=color)
+        ax.fill(x, np.add(y, self.height), color=color)
+        ax.fill(x, np.add(y, -self.height), color=color)
+        ax.fill(np.add(x, self.width), y, color=color)
+        ax.fill(np.add(x, -self.width), y, color=color)
+
+    def _get_multicolor_face_cmap(self) -> Callable[[int], tuple[float, float, float, float]]:
+        def cmap_light_hsv(n: int) -> Callable[[int], tuple[float, float, float, Literal[1]]]:
+            def light_hsv(i: int) -> tuple[float, float, float, Literal[1]]:
+                fun: Callable[[int], tuple[float, float, float, float]] = get_cmap(n, name="hsv")
+                return (*adjust_lightness(fun(i)[:3], 1.4), 1)
+
+            return light_hsv
+
+        return cmap_light_hsv(len(self.faces))
+
+    def _plot_edges(self, fig: Figure, ax: Axes, edge_plot: EdgePlot, edges_cmap_name: str, edges_width: float) -> None:
+        if edge_plot != EdgePlot.INVISIBLE:
+            edge_params_cmap = matplotlib.colormaps.get_cmap(edges_cmap_name)
+            # set the correct colorbar
+
+            v_max = 1
+            v_min = 0
+            values = jnp.array([1])
+            # set the correct colorbar if needed
+            # Get values, min and max
+            match edge_plot:
+                case EdgePlot.EDGE_PAREMETER:
+                    values = self.edges_params
+                case EdgePlot.LENGTH:
+                    values = self.get_length(jnp.arange(2 * self.nb_edges))
+            v_max = float(values.max())
+            v_min = float(values.min())
+
+            match edge_plot:
+                case EdgePlot.BLACK:
+                    pass
+                case _:
+                    add_colorbar(fig, ax, v_min, v_max, edge_params_cmap)
+
+            # Draw each edge
+            for i, edge_entry in enumerate(self.edges):
+                # Find correct color depending on chosen colormap
+                match edge_plot:
+                    case EdgePlot.BLACK:
+                        color = (0, 0, 0, 1)
+                    case _:
+                        norm_val = 1 if v_max == v_min else (values[i] - v_min) / (v_max - v_min)
+                        color = edge_params_cmap(norm_val)
+                # Draw the edge with color
+                self._draw_edge(ax, edge_entry, color, edges_width)
+
+    def _draw_edge(
+        self,
+        ax: Axes,
+        edge_entry: tuple[int, int, int, int, int, int, int, int],
+        color: tuple[float, float, float, float] | NDArray,
+        edges_width: float,
+    ) -> None:
+        origin_id = edge_entry[3]
+        target_id = edge_entry[4]
+        he_offset_x = edge_entry[6]
+        he_offset_y = edge_entry[7]
+
+        origin = self.vertices[origin_id]
+        target = self.vertices[target_id] + np.array([he_offset_x * self.width, he_offset_y * self.height])
+
+        points = np.array([origin, target])
+        x = points[:, 0]
+        y = self.height - points[:, 1]
+        ax.plot(x, y, color=color, linewidth=edges_width)
+
+    def _plot_vertices(
+        self, fig: Figure, ax: Axes, vertex_plot: VertexPlot, vertices_cmap_name: str, vertices_size: float
+    ) -> None:
+        if vertex_plot != VertexPlot.INVISIBLE:
+            # set the correct colorbar
+            vertices_params_cmap = matplotlib.colormaps.get_cmap(vertices_cmap_name)
+            v_max = 1
+            v_min = 0
+            if vertex_plot == VertexPlot.VERTEX_PAREMETER:
+                v_max = float(self.vertices_params.max())
+                v_min = float(self.vertices_params.min())
+                add_colorbar(fig, ax, v_min, v_max, vertices_params_cmap)
+            # Draw each vertex
+            for i, vertex in enumerate(self.vertices):
+                # Find correct color depending on chosen colormap
+                match vertex_plot:
+                    case VertexPlot.VERTEX_PAREMETER:
+                        norm_val = 1 if v_max == v_min else (self.vertices_params[i] - v_min) / (v_max - v_min)
+                        color = vertices_params_cmap(norm_val)
+                    case VertexPlot.BLACK:
+                        color = (0, 0, 0, 1)
+                    case _:
+                        color = (0, 0, 0, 0)
+                # Draw the vertex with color
+                ax.scatter(vertex[0], self.height - vertex[1], color=color, s=vertices_size)
 
 
 def _make_periodic(  # noqa: C901

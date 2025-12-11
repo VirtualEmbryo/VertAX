@@ -1,17 +1,69 @@
+import colorsys
 import os
+from collections.abc import Callable
+from enum import Enum
 
-import matplotlib.pyplot as plt
 import matplotlib
+import matplotlib.colors as mc
+import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.axes import Axes
+from matplotlib.colors import Colormap
+from matplotlib.figure import Figure
 from matplotlib.patches import Arc
 
 
-def get_cmap(n, name="hsv"):
-    """Returns a function that maps each index in 0, 1, ..., n-1 to a distinct
-    RGB color. The keyword argument name must be a standard mpl colormap name.
+class FacePlot(Enum):
+    """What it is possible to show on a face."""
+
+    MULTICOLOR = 1
+    FACE_PAREMETER = 2
+    AREA = 3
+    PERIMETER = 4
+    WHITE = 5
+
+
+class EdgePlot(Enum):
+    """What it is possible to show on an edge."""
+
+    BLACK = 1
+    EDGE_PAREMETER = 2
+    LENGTH = 3
+    INVISIBLE = 4
+
+
+class VertexPlot(Enum):
+    """What it is possible to show on a vertex."""
+
+    BLACK = 1
+    VERTEX_PAREMETER = 2
+    INVISIBLE = 3
+
+
+def add_colorbar(fig: Figure, ax: Axes, v_min: float, v_max: float, cmap: Colormap) -> None:
+    """Add a colorbar to the figure, with given min and max values and colormap."""
+    fake_im = ax.imshow(
+        [[1]],
+        vmin=v_min,
+        vmax=v_max,
+        cmap=cmap,
+    )
+    fig.colorbar(fake_im, ax=ax)
+
+
+def adjust_lightness(color: tuple[float, float, float], amount: float = 0.5) -> tuple[float, float, float]:
+    """Adjust lightness of a color."""
+    color = colorsys.rgb_to_hls(*mc.to_rgb(color))
+    return colorsys.hls_to_rgb(color[0], max(0, min(1, amount * color[1])), color[2])
+
+
+def get_cmap(n: int, name: str = "hsv") -> Callable[[int], tuple[float, float, float, float]]:
+    """Returns a function that maps each index in 0, 1, ..., n-1 to a distinct RGB color.
+
+    The keyword argument name must be a standard mpl colormap name.
     """
 
-    def cmap_with_n_colors(i: int):
+    def cmap_with_n_colors(i: int) -> tuple[float, float, float, float]:
         cmap = matplotlib.colormaps.get_cmap(name)
         return cmap(i / (n - 1))
 

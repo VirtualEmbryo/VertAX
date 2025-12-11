@@ -96,7 +96,6 @@ def get_length_with_offset(
     """Get the length and associated offsets for given half-edges."""
     v_source = heTable.at[he, 3].get()
     v_target = heTable.at[he, 4].get()
-
     x0, y0 = vertTable.at[v_source, :2].get()  # source vertex
     he_offset_x1 = heTable.at[he, 6].get() * width  # target offset
     he_offset_y1 = heTable.at[he, 7].get() * height
