@@ -1,6 +1,7 @@
 """Periodic Boundary Condition on a mesh."""
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Literal, Self
 
 import jax
@@ -61,6 +62,85 @@ class PBCMesh(Mesh):
         mesh.MAX_EDGES_IN_ANY_FACE = other_mesh.MAX_EDGES_IN_ANY_FACE
         mesh._update_T1_func = other_mesh._update_T1_func
 
+        return mesh
+
+    def save_mesh_txt(
+        self,
+        directory: str,
+        vertices_filename: str = "vertTable.txt",
+        edges_filename: str = "heTable.txt",
+        faces_filename: str = "faceTable.txt",
+    ) -> None:
+        """Save a mesh in separate text files that can be read by numpy.
+
+        Args:
+            directory (str): Path to the directory where to save the files.
+            vertices_filename (str, optional): Filename for the vertices table. Defaults to "vertTable.txt".
+            edges_filename (str, optional): Filename for the half-edges table. Defaults to "heTable.txt".
+            faces_filename (str, optional): Filename for the faces table. Defaults to "faceTable.txt".
+        """
+        dirpath = Path(directory)
+        dirpath.mkdir(parents=True, exist_ok=True)
+        vertpath = dirpath / vertices_filename
+        hepath = dirpath / edges_filename
+        facepath = dirpath / faces_filename
+        np.savetxt(vertpath, self.vertices)
+        np.savetxt(hepath, self.edges)
+        np.savetxt(facepath, self.faces)
+
+    def save_mesh(self, path: str) -> None:
+        """Save mesh to a file.
+
+        Args:
+            path (str): Path to the saved file. The extension is .npz, a numpy format.
+        """
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(path, allow_pickle=False, vertices=self.vertices, edges=self.edges, faces=self.faces)
+
+    @classmethod
+    def load_mesh(cls, path: str) -> Self:
+        """Load a mesh from a file.
+
+        Args:
+            path (str): Path to the mesh file (.npz), numpy format.
+
+        Returns:
+            Mesh: the mesh loaded from the numpy .npz file.
+        """
+        mesh_file = np.load(path)
+        mesh = cls._create()
+        mesh.vertices, mesh.edges, mesh.faces = mesh_file["vertices"], mesh_file["edges"], mesh_file["faces"]
+        return mesh
+
+    @classmethod
+    def load_mesh_txt(
+        cls,
+        directory: str,
+        vertices_filename: str = "vertTable.txt",
+        edges_filename: str = "heTable.txt",
+        faces_filename: str = "faceTable.txt",
+    ) -> Self:
+        """Load a mesh from text files.
+
+        Args:
+            directory (str): Directory where the text files are stored.
+            vertices_filename (str, optional): Filename for the vertices table. Defaults to "vertTable.txt".
+            edges_filename (str, optional): Filename for the half-edges table. Defaults to "heTable.txt".
+            faces_filename (str, optional): Filename for the faces table. Defaults to "faceTable.txt".
+
+        Returns:
+            Self: The loaded mesh.
+        """
+        dirpath = Path(directory)
+        dirpath.mkdir(parents=True, exist_ok=True)
+        vertpath = dirpath / vertices_filename
+        hepath = dirpath / edges_filename
+        facepath = dirpath / faces_filename
+
+        mesh = cls._create()
+        mesh.vertices = jnp.array(np.loadtxt(vertpath, dtype=np.float64))
+        mesh.edges = jnp.array(np.loadtxt(hepath, dtype=np.int64))
+        mesh.faces = jnp.array(np.loadtxt(facepath, dtype=np.int64))
         return mesh
 
     def get_length(self, half_edge_id: Array) -> Array:
@@ -465,7 +545,7 @@ class PBCMesh(Mesh):
         save: bool = False,
         save_path: str = "pbc_mesh.png",
         faces_cmap_name: str = "cividis",
-        edges_cmap_name: str = "viridis",
+        edges_cmap_name: str = "coolwarm",
         edges_width: float = 2,
         vertices_cmap_name: str = "spring",
         vertices_size: float = 20,
@@ -504,7 +584,7 @@ class PBCMesh(Mesh):
         edge_parameters_name: str = "",
         face_parameters_name: str = "",
         faces_cmap_name: str = "cividis",
-        edges_cmap_name: str = "viridis",
+        edges_cmap_name: str = "coolwarm",
         edges_width: float = 2,
         vertices_cmap_name: str = "spring",
         vertices_size: float = 20,

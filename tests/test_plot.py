@@ -16,7 +16,7 @@ from vertax.pbc import PBCMesh
 from vertax.plot import EdgePlot, FacePlot, VertexPlot
 
 
-def tets_pbc_plot() -> None:
+def test_plot() -> None:
     """Check identical result of a standard test with previous results (october 2025)."""
     # Settings
     n_cells = 10
@@ -52,4 +52,4 @@ def tets_pbc_plot() -> None:
 
 
 if __name__ == "__main__":
-    tets_pbc_plot()
+    test_plot()

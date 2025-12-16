@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, NoReturn, Self, TypeVar
+from typing import Any, NoReturn, TypeVar
 
 import jax.numpy as jnp
-import numpy as np
 import optax
 from jax import Array
 
@@ -69,30 +67,6 @@ class Mesh(metaclass=NoPublicConstructor):
 
         self.inner_solver: optax.GradientTransformation = optax.sgd(learning_rate=0.01)
         self.outer_solver: optax.GradientTransformation = optax.adam(learning_rate=0.0001, nesterov=True)
-
-    def save_mesh(self, path: str) -> None:
-        """Save mesh to a file.
-
-        Args:
-            path (str): Path to the saved file. The extension is .npz.
-        """
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(path, allow_pickle=False, vertices=self.vertices, edges=self.edges, faces=self.faces)
-
-    @classmethod
-    def load_mesh(cls, path: str) -> Self:
-        """Load a mesh from a file.
-
-        Args:
-            path (str): Path to the mesh file (.npz).
-
-        Returns:
-            Mesh: the mesh loaded from the .npz file.
-        """
-        mesh_file = np.load(path)
-        mesh = cls._create()
-        mesh.vertices, mesh.edges, mesh.faces = mesh_file["vertices"], mesh_file["edges"], mesh_file["faces"]
-        return mesh
 
     @property
     def nb_vertices(self) -> int:
