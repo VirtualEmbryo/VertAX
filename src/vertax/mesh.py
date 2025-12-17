@@ -76,7 +76,12 @@ class Mesh(metaclass=NoPublicConstructor):
     @property
     def nb_edges(self) -> int:
         """Get the number of edges of the mesh."""
-        return len(self.edges) // 2
+        return self.nb_half_edges // 2
+
+    @property
+    def nb_half_edges(self) -> int:
+        """Get the number of half-edges of the mesh."""
+        return len(self.edges)
 
     @property
     def nb_faces(self) -> int:

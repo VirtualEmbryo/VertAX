@@ -146,17 +146,17 @@ def energy_bounded(
     angTable = jnp.repeat(angTable, 2)
     he_params = jax.nn.sigmoid(he_params) + 1
 
-    def mapped_fn_area(face: Array) -> float:
+    def mapped_fn_area(face: Array) -> Array:
         return cell_area_energy(face, vertTable, angTable, heTable, faceTable)
 
     cell_area_energies = jnp.sum(vmap(mapped_fn_area)(faces))
 
-    def mapped_fn_inner(edge: Array, tension: Array) -> float:
+    def mapped_fn_inner(edge: Array, tension: Array) -> Array:
         return inner_edge_energy(edge, tension, vertTable, heTable)
 
     inner_edge_energies = jnp.sum(vmap(mapped_fn_inner)(unique_edges, he_params))
 
-    def mapped_fn_surface(edge: Array, tension: Array) -> float:
+    def mapped_fn_surface(edge: Array, tension: Array) -> Array:
         return surface_edge_energy(edge, tension, vertTable, angTable, heTable)
 
     surface_edge_energies = jnp.sum(vmap(mapped_fn_surface)(edges, jnp.repeat(he_params, 2)))
