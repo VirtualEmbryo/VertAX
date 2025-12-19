@@ -30,9 +30,9 @@ def test_plot() -> None:
     bounded_mesh.edges_params = jnp.array(rng.random(bounded_mesh.nb_edges) * 3 + 1)
     bounded_mesh.faces_params = jnp.array(rng.random(bounded_mesh.nb_faces) * 7 + 3)
     bounded_mesh.plot(
-        vertex_plot=VertexPlot.VERTEX_PAREMETER,
+        vertex_plot=VertexPlot.INVISIBLE,
         edge_plot=EdgePlot.LENGTH,
-        face_plot=FacePlot.AREA,
+        face_plot=FacePlot.PERIMETER,
         vertex_parameters_name="Random vertex parameter",
         title="Too much colorbar is possible !",
     )

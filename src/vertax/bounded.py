@@ -15,7 +15,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from scipy.spatial import Voronoi
 
-from vertax.geo import get_area_bounded, get_edge_length, get_perimeter_bounded, get_surface_length
+from vertax.geo import get_any_length, get_area_bounded, get_perimeter_bounded
 from vertax.mesh import Mesh
 from vertax.opt import BilevelOptimizationMethod
 from vertax.opt_bounded import InnerLossFunction, OuterLossFunction, bilevel_opt_bounded, inner_opt_bounded
@@ -233,18 +233,17 @@ class BoundedMesh(Mesh):
         angTable = jnp.repeat(self.angles, 2)
 
         def _get_length(half_edge_id: Array) -> Array:
-            return get_edge_length(half_edge_id, vertTable, self.edges) + get_surface_length(
-                half_edge_id, vertTable, angTable, self.edges
-            )
+            return get_any_length(half_edge_id, vertTable, angTable, self.edges)
 
         return jax.vmap(_get_length)(half_edge_id)
 
     def get_perimeter(self, face_id: Array) -> Array:
         """Get the area of a face."""
-        raise NotImplementedError
+        vertTable = jnp.vstack([jnp.array([[0.0, 0.0], [1.0, 1.0]]), self.vertices])
+        angTable = jnp.repeat(self.angles, 2)
 
         def _get_perimeter(face_id: Array) -> Array:
-            return get_perimeter_bounded(face_id, self.vertices, self.angles, self.edges, self.faces)
+            return get_perimeter_bounded(face_id, vertTable, angTable, self.edges, self.faces)
 
         return jax.vmap(_get_perimeter)(face_id)
 

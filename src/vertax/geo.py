@@ -330,6 +330,35 @@ def get_area_bounded(face: Array, vertTable: Array, angTable: Array, heTable: Ar
 
 
 @jit
+def get_any_length(he: Array, vertTable: Array, angTable: Array, heTable: Array) -> Array:
+    """Get bounded length for both surface and inside edges."""
+    selector = heTable.at[he, 3].get() != 0
+    flat_len = get_edge_length(he, vertTable, heTable)
+    curved_len = get_surface_length(he, vertTable, angTable, heTable)
+    return jnp.where(selector, flat_len, curved_len)
+
+
+@jit
 def get_perimeter_bounded(face: Array, vertTable: Array, angTable: Array, heTable: Array, faceTable: Array) -> Array:
     """Get the perimeters of given faces."""
-    ...
+    start_he = faceTable.at[face, 0].get()
+    res_0 = get_any_length(start_he, vertTable, angTable, heTable)
+    initial_carry = (start_he, res_0, False)
+    xs = jnp.arange(11)
+
+    def scan_body(carry: tuple[Array, Array, Array | bool], _i: int) -> tuple[tuple[Array, Array, Array | bool], float]:
+        previous_he, previous_res, has_stopped = carry
+        current_he = heTable.at[previous_he, 1].get()
+        is_start_node = current_he == start_he
+        has_stopped = has_stopped | is_start_node
+        contribution = get_any_length(current_he, vertTable, angTable, heTable)
+        new_res = jax.lax.select(
+            has_stopped,
+            previous_res,  # If stopped, result is unchanged
+            previous_res + contribution,  # If running, accumulate
+        )
+        return (current_he, new_res, has_stopped), 0.0
+
+    final_carry, _ = jax.lax.scan(scan_body, initial_carry, xs)  # type: ignore
+    _, final_res, _ = final_carry
+    return final_res
