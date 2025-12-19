@@ -21,7 +21,7 @@
         "scikit-image==0.24.0",
         "scipy>=1.16.2",
         "tifffile==2024.12.12",
-]
+    ]
 
     classifiers = [
         "Development Status :: 1 - Planning",
@@ -108,7 +108,7 @@
             "PERF",
             "RUF",
         ]
-        ignore = ["S101", "N816", "N803", "N806", "COM812", "S301"]
+        ignore = ["S101", "N816", "N803", "N806", "COM812", "S301", "E402"]
 
         # Allow fix for all enabled rules (when `--fix`) is provided.
         fixable   = ["ALL"]

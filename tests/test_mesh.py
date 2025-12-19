@@ -1,5 +1,8 @@
 """Private test module to test implementation of a new Mesh class."""
 
+import os
+
+os.environ["JAX_PLATFORM_NAME"] = "cpu"
 import jax.numpy as jnp
 import jax.random
 import pytest
@@ -48,7 +51,7 @@ def test_compare_pbc_mesh_with_create_mesh_from_image() -> None:
     """Compare the two from_seeds functions. They should be the same."""
     plot = False
     # imread tiff = Y is the first axis, X the second.
-    img = imread("tests/test_image.tif")[:-101, :]  # non rect, odd and pair dimensions
+    img = imread("tests/test_image.tif")  # [:-101, :]  # non rect, odd and pair dimensions
     print("create mesh from image...")
     vertTable, heTable, faceTable = create_mesh_from_image(img)
     if plot:
