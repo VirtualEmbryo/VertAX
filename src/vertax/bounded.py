@@ -279,6 +279,8 @@ class BoundedMesh(Mesh):
         """Create a bounded Mesh from a list of seeds.
 
         The seeds are assumed to have x-coordinate in ]0, width[ and y-coordinate in ]0, height[.
+        Note that the final mesh might not use your seeds if they don't work to create a correct
+        bounded mesh via our method.
 
         Args:
             seeds (Array[float32]): jax float array of seed positions of shape (nbSeeds, 2).
@@ -289,26 +291,34 @@ class BoundedMesh(Mesh):
         rng = np.random.default_rng(seed=random_key)
         n_cells = len(seeds)  # starting number of seeds must be equal to the desired number of cells (faces)
 
+        # We'll try to construct a Voronoi diagram with n_cells closed (bounded) cells.
+        # This will not work with exactly n_cells seeds because there will be unbounded cells.
+        # If the number of bounded cells is insufficient, we add a new seed to the list.
+        # If there is too many bounded cells, we retry with entirely new seeds.
+        # We also check that the bounded cells are connected.
         while True:
-            success = 0
-            voronoi = Voronoi(seeds)
+            success = 0  # if 1 : not enough bounded cells. If 2 : too many bounded cells.
 
+            # Create the Voronoi diagrams from current seed list.
+            voronoi = Voronoi(seeds)
             vertices = voronoi.vertices
             edges = voronoi.ridge_vertices
-            faces = voronoi.regions
+            faces = voronoi.regions  # regions = faces = cells
 
+            # We count the number of bounded cells and the connectivity of vertices.
             inbound_faces = []
             inbound_vertices = np.zeros(vertices.shape[0], dtype=np.int32)
             for face in faces:
                 if face and all(item > -1 for item in face):  # the face must not be an empty list
                     face_vertices_positions = vertices[face]
+                    # We check that all of the face's vertices are in a box [0, width]x[0, height]
                     if (
                         np.all(face_vertices_positions[:, 0] < width)
                         and np.all(face_vertices_positions[:, 1] < height)
                         and np.all(face_vertices_positions > 0)
                     ):
-                        inbound_faces.append(face)
-                        inbound_vertices[face] += 1
+                        inbound_faces.append(face)  # the face is bounded
+                        inbound_vertices[face] += 1  # +1 to the connectivity of the face's vertices.
 
             # getting rid of faces connected to a single other inbound face
             # (these can be problematic and lead to many special cases later on)
@@ -316,65 +326,84 @@ class BoundedMesh(Mesh):
                 num_infaces = len(inbound_faces)
                 del_count = 0
                 for i, face in enumerate(reversed(inbound_faces)):
+                    # only 2 (or less (not sure it's possible)) vertices of the face are shared with other faces :
+                    # that means it is connected to one other bounded face only -> We remove it.
                     if np.sum(inbound_vertices[face] > 1) <= 2:
                         inbound_vertices[face] -= 1
                         del inbound_faces[num_infaces - i - 1]
                         del_count += 1
+                # Removing one face can possibly alter other faces so we might do another loop.
+                # We stop when there is no more face to remove.
                 if del_count == 0:
                     break
 
+            # Check that we have the correct number of cells.
             if num_infaces < n_cells:
                 success = 1
             elif num_infaces > n_cells:
                 success = 2
             else:
+                # There is exactly n_cells connected bounded faces.
+                # Now, it is possible that a bounded face has vertices or edges
+                # that are not shared with other faces. We get rid of those,
+                # in order to have only one exterior edge that will be an arc circle.
                 for i, face in enumerate(inbound_faces):
-                    useful_vertices = []
-                    extra_edges = []
-                    last_useful = -1
-                    incomplete_new_edge = False
+                    useful_vertices = []  # List of the face vertices that are shared with other.
+                    # (We'll keep them and call them "useful").
+                    extra_edges = []  # List of edges to replace what we have removed
+                    last_useful = -1  # ID of the last "useful" vertex. -1 at the beginning (we'll treat that case)
+                    new_edge = []  # New edge that will replace current vertices we're trying to remove
+                    incomplete_new_edge = False  # State boolean : are we replacing vertices right now ?
                     for vertex in face:
-                        if inbound_vertices[vertex] == 1:
-                            if not incomplete_new_edge:
-                                new_edge = []
+                        if inbound_vertices[vertex] == 1:  # We found a vertex that is not shared with other faces.
+                            # We plan to remove it by not adding it to the useful vertices list,
+                            # and by creating a new edge from last useful vertex to the next one.
+                            if not incomplete_new_edge:  # Detect if we're not already in the incomplete edge state
+                                new_edge = []  # re-init
                                 new_edge.append(last_useful)
-                                incomplete_new_edge = True
-                        else:
+                                incomplete_new_edge = True  # Move to incomplete edge state.
+                        else:  # We found a useful vertex
                             useful_vertices.append(vertex)
                             last_useful = vertex
-                            if incomplete_new_edge:
+                            if incomplete_new_edge:  # If in incomplete edge state we can finally close the new edge.
                                 new_edge.append(vertex)
                                 extra_edges.append(new_edge)
                                 incomplete_new_edge = False
+                    # After looping through the vertices of the face, we need to take care of
+                    # two special cases : the first or the last vertex is not shared.
                     if extra_edges and extra_edges[0][0] == -1:
                         extra_edges[0][0] = useful_vertices[-1]
                     elif incomplete_new_edge:
                         new_edge.append(useful_vertices[0])
                         extra_edges.append(new_edge)
+                    # The extra edges are added to the list of all edges
                     edges.extend(extra_edges)
-                    inbound_faces[i] = tuple(sorted(useful_vertices))
-                useful_vertices_set = set(np.where(inbound_vertices > 1)[0])
+                    inbound_faces[i] = tuple(
+                        sorted(useful_vertices)
+                    )  # And the face itself is replaced by only the useful vertices.
+                    # Note that the vertices here are not ordered in clockwise or counterclockwise order anymore.
+                useful_vertices_set = set(np.where(inbound_vertices > 1)[0])  # We filter the useful vertices.
 
                 # HALF EDGE DATA STRUCTURE
-
-                # reciprocating edges
-
+                # Filter edges with useful vertices only.
                 useful_edges = [tuple(sorted(e)) for e in edges if set(e).issubset(useful_vertices_set)]
 
                 # failing to abide by the following relation results in disconnected topologies
                 if len(useful_edges) != (n_cells - 1) * 3:
-                    success = 2
+                    success = 2  # Case : we want to restart with new seeds because current solution is not OK.
                 else:
+                    # We construct the half-edges.
                     half_edges = []
                     for e in useful_edges:
                         half_edges.append(e)
+                        # reciprocating edges
                         half_edges.append((e[1], e[0]))
 
-                    # finding clockwise (or counterclockwise) half edge set for each face
-
+                    # finding clockwise (or counterclockwise) half edge set for each face,
+                    # as we broke it earlier.
                     ordered_edges_inbound_faces = []
                     for face in inbound_faces:
-                        ### I think scipy give you everything already ordered for finite faces
+                        # Find all edges fon this face and we'll loow through them to order them.
                         edges_face = [(f1, f2) for f1 in face for f2 in face if (f1, f2) in useful_edges]
 
                         i = 0
@@ -387,6 +416,7 @@ class BoundedMesh(Mesh):
                                 ordered_face.append(e)
                                 start_edge = e
                                 visited.append(e)
+                            # We must be careful because some edges might be in the wrong order.
                             if e[1] == start_edge[1] and e not in visited:
                                 ordered_face.append((e[1], e[0]))
                                 start_edge = (e[1], e[0])
@@ -394,6 +424,7 @@ class BoundedMesh(Mesh):
                             i += 1
                             e = edges_face[i % len(edges_face)]
 
+                        # Sanity check : do we have a correct ordering ?
                         order = 0
                         for e in ordered_face:
                             idx0 = e[0]
@@ -409,6 +440,7 @@ class BoundedMesh(Mesh):
                             print("\nError: no order detected for face " + str(face) + "\n")
                             exit()
 
+                    # Now we fill the tables with the info we have.
                     useful_vertices_list = list(useful_vertices_set)
                     vertTable = np.zeros((len(useful_vertices_list), 2))
                     for i, idx in enumerate(useful_vertices_list):
@@ -423,11 +455,20 @@ class BoundedMesh(Mesh):
                                 faceTable[i] = j  # he_inside
                     faceTable = _fate_selection(faceTable, 2, rng)
 
-                    L_he = len(half_edges)
-                    heTable = np.zeros((L_he, 8), dtype=np.int32)
+                    nb_half_edges = len(half_edges)
+                    heTable = np.zeros((nb_half_edges, 8), dtype=np.int32)
                     heTable[:, 4] = 1
                     heTable[:, 6] = 1
                     relevant_twins = []
+                    # HE TABLE :
+                    # 0 : previous half-edge.
+                    # 1 : next half-edge.
+                    # 2 : twin half-edge.
+                    # 3 : source vertex id + 2 if edge is inside, 0 if the edge is outside
+                    # 4 : target vertex id + 2 if edge is inside, 0 if the edge is outside
+                    # 5 : source vertex id + 2 if edge is outside, 0 if the edge is inside
+                    # 6 : target vertex id + 2 if edge is outside, 0 if the edge is inside
+                    # 7 : id of the face containing this half-edge.
                     for i, he in enumerate(half_edges):
                         belongs_to_any_face = False
                         for hedges_face in ordered_edges_inbound_faces:
@@ -435,6 +476,8 @@ class BoundedMesh(Mesh):
                                 idx = hedges_face.index(he)
                                 heTable[i][0] = half_edges.index(hedges_face[(idx - 1) % len(hedges_face)])  # he_prev
                                 heTable[i][1] = half_edges.index(hedges_face[(idx + 1) % len(hedges_face)])  # he_next
+                                # indices 0 and 1 are reserved for source or target vertices of "outside" edges.
+                                # So we have to add +2 to other indices.
                                 heTable[i][3] = useful_vertices_list.index(he[0]) + 2  # vert source inner edges
                                 heTable[i][4] = useful_vertices_list.index(he[1]) + 2  # vert target inner edges
                                 heTable[i][7] = ordered_edges_inbound_faces.index(hedges_face)  # face
@@ -445,7 +488,8 @@ class BoundedMesh(Mesh):
                         if not belongs_to_any_face:
                             relevant_twins.append(twin_idx)
 
-                    angTable = np.ones(L_he // 2)
+                    # Angles are randomly chosen between 0 and pi/2 (with some margin to avoid extreme cases).
+                    angTable = np.ones(nb_half_edges // 2)
                     for tidx in relevant_twins:
                         angTable[tidx // 2] = rng.random() * (np.pi / 2 - 0.018) + 0.017
                         heTable[tidx][5] = heTable[tidx][3]  # vert source surface edges
@@ -463,6 +507,8 @@ class BoundedMesh(Mesh):
 
                     return bounded_mesh
 
+            # If success was 1, we had not enough bounded faces, we add a new seed to see if it helps.
+            # Otherwise we retry with new seeds entirely.
             seeds = (
                 np.vstack([seeds, (width, height) * rng.random((1, 2))])
                 if success == 1
