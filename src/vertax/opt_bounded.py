@@ -163,7 +163,7 @@ def _minimize_bounded(  # noqa: C901
         denom = jnp.where(prev_L_values[-1] != 0, prev_L_values[-1], 1.0)
         rel_var = jnp.abs((L_current - prev_L_values[-1]) / denom)
         new_stagnation_count = jnp.where(rel_var < tolerance, stagnation_count + 1, 0)
-        new_should_stop = (new_stagnation_count >= patience) | (i >= iterations_max - 1)  # type: ignore
+        new_should_stop = (new_stagnation_count >= patience) | (i >= iterations_max - 1)
 
         # Gradient wrt chosen argnums
         grads = grad(L_in, argnums=jacnums)(vt, at, ht, ft, selected_verts, selected_hes, selected_faces, vp, hp, fp)
@@ -175,24 +175,24 @@ def _minimize_bounded(  # noqa: C901
 
         # Apply updates to the chosen array on selected indices
         if argnums == 0:
-            new_vt = vt.at[sel].set(vt[sel] + updates[0].at[sel].get())  # type: ignore
-            new_at = at + updates[1]  # type: ignore
+            new_vt = vt.at[sel].set(vt[sel] + updates[0].at[sel].get())
+            new_at = at + updates[1]
             vt = lax.cond(is_running, lambda: new_vt, lambda: vt)
             at = lax.cond(is_running, lambda: new_at, lambda: at)
         elif argnums == 1:
             new_ht = ht.at[sel].set(ht[sel] + updates.at[sel].get())
             ht = lax.cond(is_running, lambda: new_ht, lambda: ht)
         elif argnums == 2:
-            new_ft = ft.at[sel].set(ft[sel] + updates.at[sel].get())  # type: ignore
+            new_ft = ft.at[sel].set(ft[sel] + updates.at[sel].get())
             ft = lax.cond(is_running, lambda: new_ft, lambda: ft)
         elif argnums == 3:
-            new_vp = vp.at[sel].set(vp[sel] + updates.at[sel].get())  # type: ignore
+            new_vp = vp.at[sel].set(vp[sel] + updates.at[sel].get())
             vp = lax.cond(is_running, lambda: new_vp, lambda: vp)
         elif argnums == 4:
-            new_hp = hp.at[sel].set(hp[sel] + updates.at[sel].get())  # type: ignore
+            new_hp = hp.at[sel].set(hp[sel] + updates.at[sel].get())
             hp = lax.cond(is_running, lambda: new_hp, lambda: hp)
         elif argnums == 5:
-            new_fp = fp.at[sel].set(fp[sel] + updates.at[sel].get())  # type: ignore
+            new_fp = fp.at[sel].set(fp[sel] + updates.at[sel].get())
             fp = lax.cond(is_running, lambda: new_fp, lambda: fp)
 
         opt_state = lax.cond(is_running, lambda: new_opt_state, lambda: opt_state)
@@ -660,7 +660,7 @@ def _minimize_ep_bounded(  # noqa: C901
         denom = jnp.where(prev_L_values[-1] != 0, prev_L_values[-1], 1.0)
         rel_var = jnp.abs((L_current - prev_L_values[-1]) / denom)
         new_stagnation_count = jnp.where(rel_var < tolerance, stagnation_count + 1, 0)
-        new_should_stop = (new_stagnation_count >= patience) | (i >= iterations_max - 1)  # type: ignore
+        new_should_stop = (new_stagnation_count >= patience) | (i >= iterations_max - 1)
 
         # Gradient wrt chosen argnums
         grads = grad(loss_evaluated, argnums=jacnums)(vt, at, ht, ft, vp, hp, fp)
@@ -672,24 +672,24 @@ def _minimize_ep_bounded(  # noqa: C901
 
         # Apply updates to the chosen array on selected indices
         if argnums == 0:
-            new_vt = vt.at[sel].set(vt[sel] + updates[0].at[sel].get())  # type: ignore
-            new_at = at + updates[1]  # type: ignore
+            new_vt = vt.at[sel].set(vt[sel] + updates[0].at[sel].get())
+            new_at = at + updates[1]
             vt = lax.cond(is_running, lambda: new_vt, lambda: vt)
             at = lax.cond(is_running, lambda: new_at, lambda: at)
         elif argnums == 1:
             new_ht = ht.at[sel].set(ht[sel] + updates.at[sel].get())
             ht = lax.cond(is_running, lambda: new_ht, lambda: ht)
         elif argnums == 2:
-            new_ft = ft.at[sel].set(ft[sel] + updates.at[sel].get())  # type: ignore
+            new_ft = ft.at[sel].set(ft[sel] + updates.at[sel].get())
             ft = lax.cond(is_running, lambda: new_ft, lambda: ft)
         elif argnums == 3:
-            new_vp = vp.at[sel].set(vp[sel] + updates.at[sel].get())  # type: ignore
+            new_vp = vp.at[sel].set(vp[sel] + updates.at[sel].get())
             vp = lax.cond(is_running, lambda: new_vp, lambda: vp)
         elif argnums == 4:
-            new_hp = hp.at[sel].set(hp[sel] + updates.at[sel].get())  # type: ignore
+            new_hp = hp.at[sel].set(hp[sel] + updates.at[sel].get())
             hp = lax.cond(is_running, lambda: new_hp, lambda: hp)
         elif argnums == 5:
-            new_fp = fp.at[sel].set(fp[sel] + updates.at[sel].get())  # type: ignore
+            new_fp = fp.at[sel].set(fp[sel] + updates.at[sel].get())
             fp = lax.cond(is_running, lambda: new_fp, lambda: fp)
 
         opt_state = lax.cond(is_running, lambda: new_opt_state, lambda: opt_state)

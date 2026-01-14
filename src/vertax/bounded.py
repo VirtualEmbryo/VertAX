@@ -18,7 +18,14 @@ from scipy.spatial import Voronoi
 from vertax.geo import get_any_length, get_area_bounded, get_perimeter_bounded
 from vertax.mesh import Mesh
 from vertax.opt import BilevelOptimizationMethod
-from vertax.opt_bounded import InnerLossFunction, OuterLossFunction, bilevel_opt_bounded, inner_opt_bounded
+from vertax.opt_bounded import (
+    InnerLossFunction,
+    OuterLossFunction,
+    inner_opt_bounded,
+    outer_eq_prop_bounded,
+    outer_implicit_bounded,
+    outer_opt_bounded,
+)
 from vertax.plot import EdgePlot, FacePlot, VertexPlot, add_colorbar, adjust_lightness, get_cmap
 from vertax.topo import do_not_update_T1, update_T1_bounded
 
@@ -258,7 +265,7 @@ class BoundedMesh(Mesh):
         return jax.vmap(_get_area)(face_id)
 
     @classmethod
-    def from_random_seeds(cls, nb_seeds: int, width: float, height: float, random_key: int) -> Self:
+    def from_random_seeds(cls, nb_seeds: int, width: float, height: float, random_key: int, nb_fates: int = 2) -> Self:
         """Create a bounded Mesh from random seeds.
 
         Args:
@@ -266,16 +273,17 @@ class BoundedMesh(Mesh):
             width (float): width of the box containing the seeds.
             height (float): height of the box containing the seeds.
             random_key (int): seed for a random number generator to add new seeds if needed, decide on cell fates...
+            nb_fates (int, default=2): number of possible different fate marker for a cell.
 
         Returns:
             Self: The corresponding mesh.
         """
         rng = np.random.default_rng(seed=random_key)
         seeds = rng.random((nb_seeds, 2)) * (width, height)
-        return cls.from_seeds(seeds, width, height, random_key)
+        return cls.from_seeds(seeds, width, height, random_key, nb_fates)
 
     @classmethod
-    def from_seeds(cls, seeds: NDArray, width: float, height: float, random_key: int) -> Self:  # noqa: C901
+    def from_seeds(cls, seeds: NDArray, width: float, height: float, random_key: int, nb_fates: int = 2) -> Self:  # noqa: C901
         """Create a bounded Mesh from a list of seeds.
 
         The seeds are assumed to have x-coordinate in ]0, width[ and y-coordinate in ]0, height[.
@@ -287,6 +295,7 @@ class BoundedMesh(Mesh):
             width (float): width of the box containing the seeds.
             height (float): height of the box containing the seeds.
             random_key (int): seed for a random number generator to add new seeds if needed, decide on cell fates...
+            nb_fates (int, default=2): number of possible different fate marker for a cell.
         """
         rng = np.random.default_rng(seed=random_key)
         n_cells = len(seeds)  # starting number of seeds must be equal to the desired number of cells (faces)
@@ -453,7 +462,7 @@ class BoundedMesh(Mesh):
                         for j, he in enumerate(half_edges):
                             if he == hedges_face[0]:
                                 faceTable[i] = j  # he_inside
-                    faceTable = _fate_selection(faceTable, 2, rng)
+                    faceTable = _fate_selection(faceTable, nb_fates, rng)
 
                     nb_half_edges = len(half_edges)
                     heTable = np.zeros((nb_half_edges, 8), dtype=np.int32)
@@ -565,6 +574,108 @@ class BoundedMesh(Mesh):
         )
         return list(energies)
 
+    def outer_opt(
+        self,
+        loss_function_inner: InnerLossFunction,
+        loss_function_outer: OuterLossFunction,
+        only_on_vertices: None | list[int] = None,
+        only_on_edges: None | list[int] = None,
+        only_on_faces: None | list[int] = None,
+    ) -> None:
+        """Outer optimization depending on the optimization method."""
+        selected_vertices, selected_edges, selected_faces = None, None, None
+        if only_on_vertices is not None:
+            selected_vertices = jnp.array(only_on_vertices)
+        if only_on_edges is not None:
+            selected_edges = jnp.array(only_on_edges)
+        if only_on_faces is not None:
+            selected_faces = jnp.array(only_on_faces)
+        match self.bilevel_optimization_method:
+            case BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION:
+                self.vertices_params, self.edges_params, self.faces_params = outer_opt_bounded(
+                    self.vertices,
+                    self.angles,
+                    self.edges,
+                    self.faces,
+                    self.vertices_params,
+                    self.edges_params,
+                    self.faces_params,
+                    self.vertices_target,
+                    self.angles_target,
+                    self.edges_target,
+                    self.faces_target,
+                    loss_function_inner,
+                    loss_function_outer,
+                    self.inner_solver,
+                    self.outer_solver,
+                    self.min_dist_T1,
+                    self.max_nb_iterations,
+                    self.tolerance,
+                    self.patience,
+                    selected_vertices,
+                    selected_edges,
+                    selected_faces,
+                    self.image_target,
+                )
+            case BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION:
+                self.vertices_params, self.edges_params, self.faces_params = outer_eq_prop_bounded(
+                    self.vertices,
+                    self.angles,
+                    self.edges,
+                    self.faces,
+                    self.vertices_params,
+                    self.edges_params,
+                    self.faces_params,
+                    self.vertices_target,
+                    self.angles_target,
+                    self.edges_target,
+                    self.faces_target,
+                    loss_function_inner,
+                    loss_function_outer,
+                    self.inner_solver,
+                    self.outer_solver,
+                    self.min_dist_T1,
+                    self.max_nb_iterations,
+                    self.tolerance,
+                    self.patience,
+                    selected_vertices,
+                    selected_edges,
+                    selected_faces,
+                    self.image_target,
+                    self.beta,
+                    self._update_T1_func,
+                )
+            case BilevelOptimizationMethod.IMPLICIT_DIFFERENTIATION:
+                self.vertices_params, self.edges_params, self.faces_params = outer_implicit_bounded(
+                    self.vertices,
+                    self.angles,
+                    self.edges,
+                    self.faces,
+                    self.vertices_params,
+                    self.edges_params,
+                    self.faces_params,
+                    self.vertices_target,
+                    self.angles_target,
+                    self.edges_target,
+                    self.faces_target,
+                    loss_function_inner,
+                    loss_function_outer,
+                    self.inner_solver,
+                    self.outer_solver,
+                    self.min_dist_T1,
+                    self.max_nb_iterations,
+                    self.tolerance,
+                    self.patience,
+                    selected_vertices,
+                    selected_edges,
+                    selected_faces,
+                    self.image_target,
+                    self._update_T1_func,
+                )
+            case _:
+                msg = f"{self.bilevel_optimization_method} is not implemented for bounded meshes."
+                raise ValueError(msg)
+
     def bilevel_opt(
         self,
         loss_function_inner: InnerLossFunction,
@@ -588,54 +699,8 @@ class BoundedMesh(Mesh):
         Returns:
             list[float]: History of loss values during optimization.
         """
-        selected_vertices, selected_edges, selected_faces = None, None, None
-        if only_on_vertices is not None:
-            selected_vertices = jnp.array(only_on_vertices)
-        if only_on_edges is not None:
-            selected_edges = jnp.array(only_on_edges)
-        if only_on_faces is not None:
-            selected_faces = jnp.array(only_on_faces)
-        (
-            (
-                self.vertices,
-                self.angles,
-                self.edges,
-                self.faces,
-                self.vertices_params,
-                self.edges_params,
-                self.faces_params,
-            ),
-            loss_history,
-        ) = bilevel_opt_bounded(
-            vertTable=self.vertices,
-            angTable=self.angles,
-            heTable=self.edges,
-            faceTable=self.faces,
-            vert_params=self.vertices_params,
-            he_params=self.edges_params,
-            face_params=self.faces_params,
-            vertTable_target=self.vertices_target,
-            angTable_target=self.angles_target,
-            heTable_target=self.edges_target,
-            faceTable_target=self.faces_target,
-            L_in=loss_function_inner,
-            L_out=loss_function_outer,
-            solver_inner=self.inner_solver,
-            solver_outer=self.outer_solver,
-            min_dist_T1=self.min_dist_T1,
-            iterations_max=self.max_nb_iterations,
-            tolerance=self.tolerance,
-            patience=self.patience,
-            selected_verts=selected_vertices,
-            selected_hes=selected_edges,
-            selected_faces=selected_faces,
-            image_target=self.image_target,
-            beta=self.beta,
-            optimization_method=self.bilevel_optimization_method,
-            update_T1_func=self._update_T1_func,
-        )
-
-        return list(loss_history)
+        self.outer_opt(loss_function_inner, loss_function_outer, only_on_vertices, only_on_edges, only_on_faces)
+        return self.inner_opt(loss_function_inner, only_on_vertices, only_on_edges, only_on_faces)
 
     def plot(
         self,
