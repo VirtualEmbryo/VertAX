@@ -14,7 +14,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "cellpose==3.1.0",
-  "jax[cuda]>=0.4.34",
+  "jax>=0.4.34",
   "jaxlib==0.4.34",
   "jaxopt==0.8.3",
   "matplotlib==3.8.0",
