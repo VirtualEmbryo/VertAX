@@ -1,16 +1,20 @@
+"""General plotting functions."""
+
 import colorsys
-import os
 from collections.abc import Callable
 from enum import Enum
+from pathlib import Path
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from jax import Array
 from matplotlib.axes import Axes
 from matplotlib.colorbar import Colorbar
 from matplotlib.colors import Colormap, to_rgb
 from matplotlib.figure import Figure
 from matplotlib.patches import Arc
+from numpy.typing import NDArray
 
 
 class FacePlot(Enum):
@@ -68,22 +72,23 @@ def get_cmap(n: int, name: str = "hsv") -> Callable[[int], tuple[float, float, f
     return cmap_with_n_colors
 
 
-def plot_mesh(
-    vertTable,
-    heTable,
-    faceTable,
+def plot_mesh(  # noqa: C901
+    vertTable: Array,
+    heTable: Array,
+    faceTable: Array,
     width: float,
     height: float,
-    flip_x=False,
-    flip_y=False,
-    multicolor=True,
-    lines=True,
-    vertices=True,
-    path=".",
-    name="-1",
-    save=False,
-    show=True,
-):
+    flip_x: bool = False,
+    flip_y: bool = False,
+    multicolor: bool = True,
+    lines: bool = True,
+    vertices: bool = True,
+    path: str = ".",
+    name: str = "-1",
+    save: bool = False,
+    show: bool = True,
+) -> None:
+    """General function to plot a mesh with periodic boundary conditions."""
     cmap = get_cmap(len(faceTable))
     all_verts = []
     for face in range(len(faceTable)):
@@ -183,7 +188,7 @@ def plot_mesh(
     plt.gca().set_aspect("equal")
 
     if save:
-        os.makedirs(path, exist_ok=True)
+        Path(path).mkdir(exist_ok=True)
         # plt.savefig(path + str(name) + '.svg', format='svg')
         plt.savefig(path + str(name) + ".png", format="png")
 
@@ -193,25 +198,24 @@ def plot_mesh(
     plt.clf()
 
 
-def plot_mesh_selected(
-    vertTable,
-    heTable,
-    faceTable,
-    selected_verts,
-    selected_hes,
-    selected_faces,
+def plot_mesh_selected(  # noqa: C901
+    vertTable: Array,
+    heTable: Array,
+    faceTable: Array,
+    selected_faces: Array,
     width: float,
     height: float,
-    flip_x=False,
-    flip_y=False,
-    multicolor=True,
-    lines=True,
-    vertices=True,
-    path=".",
-    name="-1",
-    save=False,
-    show=True,
-):
+    flip_x: bool = False,
+    flip_y: bool = False,
+    multicolor: bool = True,
+    lines: bool = True,
+    vertices: bool = True,
+    path: str = ".",
+    name: str = "-1",
+    save: bool = False,
+    show: bool = True,
+) -> None:
+    """Plot only selected faces."""
     cmap = get_cmap(len(faceTable))
 
     all_verts = []
@@ -316,7 +320,7 @@ def plot_mesh_selected(
     plt.gca().set_aspect("equal")
 
     if save:
-        os.makedirs(path, exist_ok=True)
+        Path(path).mkdir(exist_ok=True)
         plt.savefig(path + str(name) + ".svg", format="svg")
         plt.savefig(path + str(name) + ".png", format="png")
 
@@ -326,25 +330,27 @@ def plot_mesh_selected(
     plt.clf()
 
 
-def plot_line_tens(
-    vertTable,
-    heTable,
-    faceTable,
-    file_txt,
+def plot_line_tens(  # noqa: C901
+    vertTable: Array,
+    heTable: Array,
+    faceTable: Array,
+    file_txt: str,
     width: float,
     height: float,
-    flip_x=False,
-    flip_y=False,
-    multicolor=False,
-    lines=True,
-    vertices=False,
-    path=".",
-    name="-1",
-    save=False,
-    show=True,
-):
-    def load_last_np_array(filename):
-        with open(filename) as file:
+    flip_x: bool = False,
+    flip_y: bool = False,
+    multicolor: bool = False,
+    lines: bool = True,
+    vertices: bool = False,
+    path: str = ".",
+    name: str = "-1",
+    save: bool = False,
+    show: bool = True,
+) -> None:
+    """Plot mesh with line tensions."""
+
+    def load_last_np_array(filename: str) -> NDArray:
+        with Path(filename).open() as file:
             content = file.read().strip()
         # Split into separate arrays (assuming each starts with '[' and ends with ']')
         arrays = content.split("]\n[")
@@ -477,7 +483,7 @@ def plot_line_tens(
     plt.gca().set_aspect("equal")
 
     if save:
-        os.makedirs(path, exist_ok=True)
+        Path(path).mkdir(exist_ok=True)
         # plt.savefig(path + str(name) + '.svg', format='svg')
         plt.savefig(path + str(name) + ".png", format="png")
 
@@ -490,7 +496,10 @@ def plot_line_tens(
 # ==========
 # Bounded
 # ==========
-def draw_arc_N_get_points(ang, pos_source, pos_target, lines, n=100):
+def draw_arc_N_get_points(  # noqa: N802
+    ang: Array, pos_source: Array, pos_target: Array, lines: bool, n: int = 100
+) -> tuple[NDArray, NDArray]:
+    """Draw an arc of a circle with N points."""
     edge_vector = pos_target - pos_source
     edge_half_length = np.linalg.norm(edge_vector) / 2
     radius = edge_half_length / np.sin(ang)
@@ -528,37 +537,33 @@ def draw_arc_N_get_points(ang, pos_source, pos_target, lines, n=100):
             ang_target += tau
     intermediate_angles = np.linspace(ang_source, ang_target, n, False)[1:]
     points = [pos_source]
-    for a in intermediate_angles:
-        points.append(radius * np.array([np.cos(a), np.sin(a)]) + center)
+    points.extend([radius * np.array([np.cos(a), np.sin(a)]) + center for a in intermediate_angles])
     points.append(pos_target)
     points.append(pos_source)
     x, y = zip(*points, strict=False)
     return x, y
 
 
-def plot_bounded_mesh(
-    vertTable,
-    angTable,
-    heTable,
-    faceTable,
-    L_box,
-    flip_x=False,
-    flip_y=False,
-    multicolor=True,
-    lines=True,
-    vertices=False,
-    fates=False,
-    path=".",
-    name="-1",
-    save=False,
-    show=True,
-):
-    if fates:
-        cmap = get_cmap(np.max(faceTable[:, 1]) + 1, name="viridis")
-    else:
-        cmap = get_cmap(faceTable.shape[0])
+def plot_bounded_mesh(  # noqa: C901
+    vertTable: NDArray,
+    angTable: NDArray,
+    heTable: NDArray,
+    faceTable: NDArray,
+    L_box: float,
+    flip_x: bool = False,
+    flip_y: bool = False,
+    multicolor: bool = True,
+    lines: bool = True,
+    vertices: bool = False,
+    fates: bool = False,
+    path: str = ".",
+    name: str = "-1",
+    save: bool = False,
+    show: bool = True,
+) -> None:
+    """Plot a bounded mesh."""
+    cmap = get_cmap(np.max(faceTable[:, 1]) + 1, name="viridis") if fates else get_cmap(faceTable.shape[0])
     draw_curve_threshold = 0.01  # radians. Must be above 0 to avoid overcomplicating a simple plot
-    num_edges = heTable.shape[0] // 2
 
     all_verts = []
     for face in range(faceTable.shape[0]):
@@ -632,13 +637,14 @@ def plot_bounded_mesh(
         x_all, y_all = zip(*all_verts, strict=False)
         plt.scatter(x_all, y_all, color="black")
 
-    # unlike the pbc case, here is not easy to know a priori what the limits of the progressively optimized cell cluster will be (across a stack of images)
+    # unlike the pbc case, here is not easy to know a priori what the limits of the progressively optimized cell cluster
+    # will be (across a stack of images)
     plt.xlim([-1.5, L_box + 0.5])
     plt.ylim([-1.5, L_box + 0.5])
     plt.gca().set_aspect("equal")
 
     if save:
-        os.makedirs(path, exist_ok=True)
+        Path(path).mkdir(exist_ok=True)
         plt.savefig(path + str(name) + ".pdf")  # format maybe should be left as a choice
 
     if show:

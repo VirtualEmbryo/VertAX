@@ -1,4 +1,4 @@
-"""Analyze masks (with no holes) to extracts a primitive mesh with vertices, egdes, and faces."""
+"""Analyze masks (with no holes) to extracts a primitive mesh with vertices, edges, and faces."""
 
 import numpy as np
 import tifffile as tiff
@@ -30,7 +30,7 @@ def segment(image: NDArray, save: bool = False, output_path: str = "segmented_im
     blurred_image = gaussian_filter(image, sigma=10)
     # Segment the image using Cellpose's `cyto` model
     model = models.Cellpose(model_type="cyto", gpu=True)
-    mask, _, _, _ = model.eval(blurred_image, channels=[0, 0], diameter=None)  # type: ignore
+    mask, _, _, _ = model.eval(blurred_image, channels=[0, 0], diameter=None)
     if save:
         # Save the resulting image
         tiff.imwrite(output_path, mask.astype(np.uint16), imagej=True)
@@ -48,7 +48,7 @@ def refine(segmented_image: NDArray) -> NDArray:
         NDArray: A mask suitable for what comes next, with no holes.
     """
     # Relabel the mask
-    labeled_mask: NDArray = label(segmented_image)  # type: ignore
+    labeled_mask: NDArray = label(segmented_image)
     unique_labels, counts = np.unique(labeled_mask, return_counts=True)
     # Create a mask for small labels
     min_size = 9
@@ -59,7 +59,7 @@ def refine(segmented_image: NDArray) -> NDArray:
         if label_i != 0:  # Skip the background label
             updated_mask[labeled_mask == label_i] = 0
     # Compute Euclidean Distance Transform (EDT) for background
-    _, indices = distance_transform_edt(updated_mask == 0, return_indices=True)  # type: ignore
+    _, indices = distance_transform_edt(updated_mask == 0, return_indices=True)
     # Assign background pixels to the nearest label
     nearest_labels = updated_mask[tuple(indices)]
     expanded_mask = updated_mask.copy()
@@ -101,12 +101,12 @@ def pad(mask: NDArray, save: bool = False, output_path: str = "padded_image.tiff
         mode="symmetric",
     )
 
-    labelled_image: NDArray = label(padded_image)  # type: ignore
+    labelled_image: NDArray = label(padded_image)
     if save:
         # Save the resulting image
         tiff.imwrite(output_path, labelled_image.astype(np.uint16), imagej=True)
 
-    return labelled_image  # type: ignore
+    return labelled_image
 
 
 def _find_trijunctions_and_labels(

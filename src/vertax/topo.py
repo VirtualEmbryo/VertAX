@@ -1,15 +1,14 @@
 """Topology module to handle T1 transitions in meshes."""
 
 from functools import partial
-from typing import TYPE_CHECKING
 
 import jax
 import jax.lax
 import jax.numpy as jnp
 from jax import Array, jit
 
+from vertax import opt, opt_bounded
 from vertax.geo import get_length, update_pbc
-
 
 ROT_ANGLE = -jnp.pi / 2
 SINA = jnp.sin(ROT_ANGLE)
@@ -17,21 +16,22 @@ COSA = jnp.cos(ROT_ANGLE)
 
 
 @partial(jit, static_argnums=(3, 4, 8))
-def update_T1(
-    vertTable,
-    heTable,
-    faceTable,
-    width,
-    height,
-    vert_params,
-    he_params,
-    face_params,
-    L_in,
-    min_dist_T1,
-    selected_verts,
-    selected_hes,
-    selected_faces,
+def update_T1(  # noqa: N802
+    vertTable: Array,
+    heTable: Array,
+    faceTable: Array,
+    width: float,
+    height: float,
+    vert_params: Array,
+    he_params: Array,
+    face_params: Array,
+    L_in: opt.InnerLossFunction,
+    min_dist_T1: float,
+    selected_verts: Array | None,
+    selected_hes: Array | None,
+    selected_faces: Array | None,
 ) -> tuple[Array, Array, Array]:
+    """Detect and apply T1 topological changes."""
     # if selected_verts is None:
     #     selected_verts = jnp.arange(vertTable.shape[0])
     # if selected_hes is None:
@@ -39,7 +39,7 @@ def update_T1(
     # if selected_faces is None:
     #     selected_faces = jnp.arange(faceTable.shape[0])
 
-    def body_fun(idx, state):
+    def body_fun(idx: Array, state: tuple[Array, Array, Array]) -> Array:
         vertTable_new, heTable_new, faceTable_new = state
 
         he = heTable_new[idx]
@@ -70,7 +70,7 @@ def update_T1(
         should_update = heTable_new[he_prev, 0] != he[1]
         twin_should_update = heTable_new[twin_he_prev, 0] != twin_he[1]
 
-        def update_state(_state) -> tuple[Array, Array, Array]:
+        def update_state(_state: tuple[Array, Array, Array]) -> tuple[Array, Array, Array]:
             vertTable_new, heTable_new, faceTable_new = _state
 
             ## heTable
@@ -303,7 +303,7 @@ def update_T1(
             (vertTable_new, heTable_new, faceTable_new),
         )
 
-        return vertTable_new, heTable_new, faceTable_new
+        return vertTable_new, heTable_new, faceTable_new  # ty:ignore[invalid-return-type]
 
     state = (vertTable, heTable, faceTable)
 
@@ -315,21 +315,22 @@ def update_T1(
 
 
 @partial(jit, static_argnums=(3, 4, 8))
-def do_not_update_T1(
-    vertTable,
-    heTable,
-    faceTable,
-    width,
-    height,
-    vert_params,
-    he_params,
-    face_params,
-    L_in,
-    min_dist_T1,
-    selected_verts,
-    selected_hes,
-    selected_faces,
+def do_not_update_T1(  # noqa: N802
+    vertTable: Array,
+    heTable: Array,
+    faceTable: Array,
+    width: float,  # noqa: ARG001
+    height: float,  # noqa: ARG001
+    vert_params: Array,  # noqa: ARG001
+    he_params: Array,  # noqa: ARG001
+    face_params: Array,  # noqa: ARG001
+    L_in: opt.InnerLossFunction,  # noqa: ARG001
+    min_dist_T1: float,  # noqa: ARG001
+    selected_verts: Array | None,  # noqa: ARG001
+    selected_hes: Array | None,  # noqa: ARG001
+    selected_faces: Array | None,  # noqa: ARG001
 ) -> tuple[Array, Array, Array]:
+    """Do nothing function."""
     return vertTable, heTable, faceTable
 
 
@@ -337,25 +338,47 @@ def do_not_update_T1(
 # Bounded
 # ==========
 @partial(jit, static_argnums=(7, 8))
-def update_T1_bounded(
-    vertTable,
-    angTable,
-    heTable,
-    faceTable,
-    vert_params,
-    he_params,
-    face_params,
-    L_in,
-    min_dist_T1,
-    selected_verts=None,
-    selected_hes=None,
-    selected_faces=None,
+def update_T1_bounded(  # noqa: C901, N802
+    vertTable: Array,
+    angTable: Array,
+    heTable: Array,
+    faceTable: Array,
+    vert_params: Array,  # noqa: ARG001
+    he_params: Array,  # noqa: ARG001
+    face_params: Array,  # noqa: ARG001
+    L_in: opt_bounded.InnerLossFunction,  # noqa: ARG001
+    min_dist_T1: float,
+    selected_verts: Array | None = None,  # noqa: ARG001
+    selected_hes: Array | None = None,  # noqa: ARG001
+    selected_faces: Array | None = None,  # noqa: ARG001
 ) -> tuple[Array, Array, Array, Array]:
+    """Find and apply T1 topological transitions for bounded meshes."""
     num_edges = heTable.shape[0] // 2
     angTable = jnp.clip(angTable, 0.017, jnp.pi / 2 - 0.001)
     scale = (min_dist_T1 + 10 ** (-3)) / 2
 
-    def true_fun4(stacked_data):
+    def true_fun4(
+        stacked_data: tuple[
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+        ],
+    ) -> tuple[Array, Array, Array, Array]:
         (
             idx,
             idx_twin,
@@ -416,7 +439,28 @@ def update_T1_bounded(
         angTable_ = angTable_.at[idx_twin // 2].set(0.017)
         return vertTable_, angTable_, heTable_, faceTable_
 
-    def false_fun4(stacked_data):
+    def false_fun4(
+        stacked_data: tuple[
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+        ],
+    ) -> tuple[Array, Array, Array, Array]:
         (
             idx,
             idx_twin,
@@ -478,7 +522,28 @@ def update_T1_bounded(
         vertTable_ = vertTable_.at[v_idx_target - 2, 1].set(y2)
         return vertTable_, angTable_, heTable_, faceTable_
 
-    def true_fun3(stacked_data):
+    def true_fun3(
+        stacked_data: tuple[
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+        ],
+    ) -> tuple[Array, Array, Array, Array]:
         (
             idx,
             idx_twin,
@@ -539,12 +604,54 @@ def update_T1_bounded(
         angTable_ = angTable_.at[idx // 2].set(0.017)
         return vertTable_, angTable_, heTable_, faceTable_
 
-    def false_fun3(stacked_data):
+    def false_fun3(
+        stacked_data: tuple[
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+        ],
+    ) -> tuple[Array, Array, Array, Array]:
         _, _, _, _, _, _, _, _, _, he_next, _, _, _, _, _, _, heTable_, _ = stacked_data
         externalize2 = heTable_.at[he_next, 3].get() == 0
         return jax.lax.cond(externalize2, true_fun4, false_fun4, stacked_data)
 
-    def true_fun2(stacked_data):
+    def true_fun2(
+        stacked_data: tuple[
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+        ],
+    ) -> tuple[Array, Array, Array, Array]:
         (
             idx,
             idx_twin,
@@ -556,10 +663,10 @@ def update_T1_bounded(
             y2,
             he_prev,
             he_next,
-            he_twin_prev,
-            he_twin_next,
+            _,
+            _,
             he_face,
-            he_twin_face,
+            _,
             vertTable_,
             angTable_,
             heTable_,
@@ -606,12 +713,58 @@ def update_T1_bounded(
         angTable_ = angTable_.at[idx // 2].set(1.0)
         return vertTable_, angTable_, heTable_, faceTable_
 
-    def false_fun2(stacked_data):
+    def false_fun2(
+        stacked_data: tuple[
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+        ],
+    ) -> tuple[Array, Array, Array, Array]:
         _, _, _, _, _, _, _, _, he_prev, _, _, _, _, _, _, _, heTable_, _ = stacked_data
         externalize1 = heTable_.at[he_prev, 3].get() == 0
         return jax.lax.cond(externalize1, true_fun3, false_fun3, stacked_data)
 
-    def true_fun1(stacked_data):
+    def true_fun1(
+        stacked_data: tuple[
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+        ],
+    ) -> tuple[Array, Array, Array, Array]:
         (
             x1,
             y1,
@@ -621,16 +774,16 @@ def update_T1_bounded(
             cy,
             x1_norm,
             x2_norm,
-            idx,
-            idx_twin,
+            _,
+            _,
             v_source,
             v_target,
-            he_prev,
-            he_next,
-            he_twin_prev,
-            he_twin_next,
-            he_face,
-            he_twin_face,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
             vertTable_,
             angTable_,
             heTable_,
@@ -650,7 +803,32 @@ def update_T1_bounded(
 
         return vertTable_, angTable_, heTable_, faceTable_
 
-    def false_fun1(stacked_data):
+    def false_fun1(
+        stacked_data: tuple[
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+            Array,
+        ],
+    ) -> tuple[Array, Array, Array, Array]:
         (
             x1,
             y1,
@@ -715,7 +893,9 @@ def update_T1_bounded(
             ),
         )
 
-    def true_fun0(stacked_data):
+    def true_fun0(
+        stacked_data: tuple[Array, Array, Array, Array, Array, Array, Array, Array, Array, Array, Array],
+    ) -> tuple[Array, Array, Array, Array]:
         x1, y1, x2, y2, idx, v_source, v_target, vertTable_, angTable_, heTable_, faceTable_ = stacked_data
 
         cx = (x1 + x2) / 2
@@ -768,11 +948,13 @@ def update_T1_bounded(
             ),
         )
 
-    def false_fun0(stacked_data):
+    def false_fun0(
+        stacked_data: tuple[Array, Array, Array, Array, Array, Array, Array, Array, Array, Array, Array],
+    ) -> tuple[Array, Array, Array, Array]:
         _, _, _, _, _, _, _, vertTable_, angTable_, heTable_, faceTable_ = stacked_data
         return vertTable_, angTable_, heTable_, faceTable_
 
-    def body_fun(i, stacked_data):
+    def body_fun(i: int, stacked_data: tuple[Array, Array, Array, Array]) -> tuple[Array, Array, Array, Array, Array]:
         vertTable_, angTable_, heTable_, faceTable_ = stacked_data
         selector = (heTable_.at[2 * i, 3].get() + heTable_.at[2 * i, 5].get()) == 0
         idx = 2 * i + selector.astype("int32")
@@ -795,18 +977,19 @@ def update_T1_bounded(
 
 
 @partial(jit, static_argnums=(7, 8))
-def do_not_update_T1_bounded(
-    vertTable,
-    angTable,
-    heTable,
-    faceTable,
-    vert_params,
-    he_params,
-    face_params,
-    L_in,
-    min_dist_T1,
-    selected_verts=None,
-    selected_hes=None,
-    selected_faces=None,
+def do_not_update_T1_bounded(  # noqa: N802
+    vertTable: Array,
+    angTable: Array,
+    heTable: Array,
+    faceTable: Array,
+    vert_params: Array,  # noqa: ARG001
+    he_params: Array,  # noqa: ARG001
+    face_params: Array,  # noqa: ARG001
+    L_in: opt_bounded.InnerLossFunction,  # noqa: ARG001
+    min_dist_T1: float,  # noqa: ARG001
+    selected_verts: Array | None = None,  # noqa: ARG001
+    selected_hes: Array | None = None,  # noqa: ARG001
+    selected_faces: Array | None = None,  # noqa: ARG001
 ) -> tuple[Array, Array, Array, Array]:
+    """Do nothing function for bounded meshes."""
     return vertTable, angTable, heTable, faceTable
