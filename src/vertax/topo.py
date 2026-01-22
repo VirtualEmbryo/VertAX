@@ -1,14 +1,20 @@
 """Topology module to handle T1 transitions in meshes."""
 
+from __future__ import annotations
+
 from functools import partial
+from typing import TYPE_CHECKING
 
 import jax
 import jax.lax
 import jax.numpy as jnp
 from jax import Array, jit
 
-from vertax import opt, opt_bounded
 from vertax.geo import get_length, update_pbc
+
+if TYPE_CHECKING:
+    from vertax.opt import InnerLossFunction
+    from vertax.opt_bounded import InnerLossFunctionBounded
 
 ROT_ANGLE = -jnp.pi / 2
 SINA = jnp.sin(ROT_ANGLE)
@@ -25,7 +31,7 @@ def update_T1(  # noqa: N802
     vert_params: Array,
     he_params: Array,
     face_params: Array,
-    L_in: opt.InnerLossFunction,
+    L_in: InnerLossFunction,
     min_dist_T1: float,
     selected_verts: Array | None,
     selected_hes: Array | None,
@@ -324,7 +330,7 @@ def do_not_update_T1(  # noqa: N802
     vert_params: Array,  # noqa: ARG001
     he_params: Array,  # noqa: ARG001
     face_params: Array,  # noqa: ARG001
-    L_in: opt.InnerLossFunction,  # noqa: ARG001
+    L_in: InnerLossFunction,  # noqa: ARG001
     min_dist_T1: float,  # noqa: ARG001
     selected_verts: Array | None,  # noqa: ARG001
     selected_hes: Array | None,  # noqa: ARG001
@@ -346,7 +352,7 @@ def update_T1_bounded(  # noqa: C901, N802
     vert_params: Array,  # noqa: ARG001
     he_params: Array,  # noqa: ARG001
     face_params: Array,  # noqa: ARG001
-    L_in: opt_bounded.InnerLossFunction,  # noqa: ARG001
+    L_in: InnerLossFunctionBounded,  # noqa: ARG001
     min_dist_T1: float,
     selected_verts: Array | None = None,  # noqa: ARG001
     selected_hes: Array | None = None,  # noqa: ARG001
@@ -985,7 +991,7 @@ def do_not_update_T1_bounded(  # noqa: N802
     vert_params: Array,  # noqa: ARG001
     he_params: Array,  # noqa: ARG001
     face_params: Array,  # noqa: ARG001
-    L_in: opt_bounded.InnerLossFunction,  # noqa: ARG001
+    L_in: InnerLossFunctionBounded,  # noqa: ARG001
     min_dist_T1: float,  # noqa: ARG001
     selected_verts: Array | None = None,  # noqa: ARG001
     selected_hes: Array | None = None,  # noqa: ARG001

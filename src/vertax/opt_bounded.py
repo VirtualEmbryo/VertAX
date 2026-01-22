@@ -11,7 +11,7 @@ from jax import Array, grad, jacfwd, jit, lax
 from vertax.opt import BilevelOptimizationMethod
 from vertax.topo import update_T1_bounded
 
-InnerLossFunction = Callable[
+InnerLossFunctionBounded = Callable[
     [Array, Array, Array, Array, Array | None, Array | None, Array | None, Array, Array, Array], Array
 ]
 OuterLossFunction = Callable[
@@ -33,7 +33,7 @@ OuterLossFunction = Callable[
 ]
 
 UpdateT1Func = Callable[
-    [Array, Array, Array, Array, Array, Array, Array, InnerLossFunction, float, Array, Array, Array],
+    [Array, Array, Array, Array, Array, Array, Array, InnerLossFunctionBounded, float, Array, Array, Array],
     tuple[Array, Array, Array, Array],
 ]
 
@@ -50,7 +50,7 @@ LossEPFunction = Callable[
         Array | None,
         Array | None,
         Array | None,
-        InnerLossFunction,
+        InnerLossFunctionBounded,
         OuterLossFunction,
         Array | None,
         Array | None,
@@ -74,7 +74,7 @@ def _minimize_bounded(  # noqa: C901
     vert_params: Array,
     he_params: Array,
     face_params: Array,
-    L_in: InnerLossFunction,
+    L_in: InnerLossFunctionBounded,
     solver: optax.GradientTransformation,
     min_dist_T1: float,
     iterations_max: int = 1000,
@@ -264,7 +264,7 @@ def inner_opt_bounded(
     vert_params: Array,
     he_params: Array,
     face_params: Array,
-    L_in: InnerLossFunction,
+    L_in: InnerLossFunctionBounded,
     solver: optax.GradientTransformation,
     min_dist_T1: float,
     iterations_max: int = 1000,
@@ -318,7 +318,7 @@ def cost_ad_bounded(
     angTable_target: Array | None,
     heTable_target: Array | None,
     faceTable_target: Array | None,
-    L_in: InnerLossFunction,
+    L_in: InnerLossFunctionBounded,
     L_out: OuterLossFunction,
     solver_inner: optax.GradientTransformation,
     min_dist_T1: float,
@@ -382,7 +382,7 @@ def outer_opt_bounded(
     angTable_target: Array | None,
     heTable_target: Array | None,
     faceTable_target: Array | None,
-    L_in: InnerLossFunction,
+    L_in: InnerLossFunctionBounded,
     L_out: OuterLossFunction,
     solver_inner: optax.GradientTransformation,
     solver_outer: optax.GradientTransformation,
@@ -504,7 +504,7 @@ def _loss_ep_static_bounded(
     angTable_target: Array | None,
     heTable_target: Array | None,
     faceTable_target: Array | None,
-    L_in: InnerLossFunction,
+    L_in: InnerLossFunctionBounded,
     L_out: OuterLossFunction,
     selected_verts: Array | None,
     selected_hes: Array | None,
@@ -557,7 +557,7 @@ def _minimize_ep_bounded(  # noqa: C901
     angTable_target: Array | None,
     heTable_target: Array | None,
     faceTable_target: Array | None,
-    L_in: InnerLossFunction,
+    L_in: InnerLossFunctionBounded,
     L_out: OuterLossFunction,
     solver: optax.GradientTransformation,
     min_dist_T1: float,
@@ -766,7 +766,7 @@ def inner_eq_prop_bounded(
     angTable_target: Array | None,
     heTable_target: Array | None,
     faceTable_target: Array | None,
-    L_in: InnerLossFunction,
+    L_in: InnerLossFunctionBounded,
     L_out: OuterLossFunction,
     solver_inner: optax.GradientTransformation,
     min_dist_T1: float,
@@ -827,7 +827,7 @@ def outer_eq_prop_bounded(
     angTable_target: Array | None,
     heTable_target: Array | None,
     faceTable_target: Array | None,
-    L_in: InnerLossFunction,
+    L_in: InnerLossFunctionBounded,
     L_out: OuterLossFunction,
     solver_inner: optax.GradientTransformation,
     solver_outer: optax.GradientTransformation,
@@ -1058,7 +1058,7 @@ def outer_implicit_bounded(
     angTable_target: Array | None,
     heTable_target: Array | None,
     faceTable_target: Array | None,
-    L_in: InnerLossFunction,
+    L_in: InnerLossFunctionBounded,
     L_out: OuterLossFunction,
     solver_inner: optax.GradientTransformation,
     solver_outer: optax.GradientTransformation,
@@ -1265,7 +1265,7 @@ def bilevel_opt_bounded(
     angTable_target: Array | None,
     heTable_target: Array | None,
     faceTable_target: Array | None,
-    L_in: InnerLossFunction,
+    L_in: InnerLossFunctionBounded,
     L_out: OuterLossFunction,
     solver_inner: optax.GradientTransformation,
     solver_outer: optax.GradientTransformation,

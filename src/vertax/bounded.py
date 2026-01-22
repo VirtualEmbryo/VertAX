@@ -19,7 +19,7 @@ from vertax.geo import get_any_length, get_area_bounded, get_perimeter_bounded
 from vertax.mesh import Mesh
 from vertax.opt import BilevelOptimizationMethod
 from vertax.opt_bounded import (
-    InnerLossFunction,
+    InnerLossFunctionBounded,
     OuterLossFunction,
     inner_opt_bounded,
     outer_eq_prop_bounded,
@@ -526,7 +526,7 @@ class BoundedMesh(Mesh):
 
     def inner_opt(
         self,
-        loss_function_inner: InnerLossFunction,
+        loss_function_inner: InnerLossFunctionBounded,
         only_on_vertices: None | list[int] = None,
         only_on_edges: None | list[int] = None,
         only_on_faces: None | list[int] = None,
@@ -576,7 +576,7 @@ class BoundedMesh(Mesh):
 
     def outer_opt(
         self,
-        loss_function_inner: InnerLossFunction,
+        loss_function_inner: InnerLossFunctionBounded,
         loss_function_outer: OuterLossFunction,
         only_on_vertices: None | list[int] = None,
         only_on_edges: None | list[int] = None,
@@ -678,7 +678,7 @@ class BoundedMesh(Mesh):
 
     def bilevel_opt(
         self,
-        loss_function_inner: InnerLossFunction,
+        loss_function_inner: InnerLossFunctionBounded,
         loss_function_outer: OuterLossFunction,
         only_on_vertices: None | list[int] = None,
         only_on_edges: None | list[int] = None,
