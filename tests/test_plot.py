@@ -11,13 +11,11 @@ if TYPE_CHECKING:
 import jax.numpy as jnp
 import numpy as np
 
-from vertax.bounded import BoundedMesh
-from vertax.pbc import PbcMesh
-from vertax.plot import EdgePlot, FacePlot, VertexPlot
+from vertax import BoundedMesh, EdgePlot, FacePlot, PbcMesh, VertexPlot, plot_mesh
 
 
 def test_plot() -> None:
-    """Check identical result of a standard test with previous results (october 2025)."""
+    """Check the plot functions (manual)."""
     # Settings
     n_cells = 10
     # Initial condition
@@ -29,7 +27,8 @@ def test_plot() -> None:
     bounded_mesh.vertices_params = jnp.array(rng.random(bounded_mesh.nb_vertices) * 82 + 14)
     bounded_mesh.edges_params = jnp.array(rng.random(bounded_mesh.nb_edges) * 3 + 1)
     bounded_mesh.faces_params = jnp.array(rng.random(bounded_mesh.nb_faces) * 7 + 3)
-    bounded_mesh.plot(
+    plot_mesh(
+        mesh=bounded_mesh,
         vertex_plot=VertexPlot.INVISIBLE,
         edge_plot=EdgePlot.LENGTH,
         face_plot=FacePlot.PERIMETER,
@@ -42,7 +41,8 @@ def test_plot() -> None:
     pbc_mesh.vertices_params = jnp.array(rng.random(pbc_mesh.nb_vertices) * 82 + 14)
     pbc_mesh.edges_params = jnp.array(rng.random(pbc_mesh.nb_edges) * 3 + 1)
     pbc_mesh.faces_params = jnp.array(rng.random(pbc_mesh.nb_faces) * 7 + 3)
-    pbc_mesh.plot(
+    plot_mesh(
+        mesh=pbc_mesh,
         vertex_plot=VertexPlot.VERTEX_PARAMETER,
         edge_plot=EdgePlot.LENGTH,
         face_plot=FacePlot.AREA,

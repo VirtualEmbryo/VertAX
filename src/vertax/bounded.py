@@ -617,6 +617,7 @@ class BoundedMesh(Mesh):
                     selected_edges,
                     selected_faces,
                     self.image_target,
+                    self._update_T1_func,
                 )
             case BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION:
                 self.vertices_params, self.edges_params, self.faces_params = outer_eq_prop_bounded(

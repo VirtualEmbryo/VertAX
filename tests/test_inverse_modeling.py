@@ -11,10 +11,10 @@ import optax
 from jax import vmap
 from numpy.testing import assert_allclose
 
+from vertax import PbcBilevelOptimizer, PbcMesh
 from vertax.cost import cost_v2v
 from vertax.geo import get_area, get_length
 from vertax.method_enum import BilevelOptimizationMethod
-from vertax.pbc import PbcMesh
 from vertax.start import create_mesh_from_seeds
 
 if TYPE_CHECKING:
@@ -36,13 +36,14 @@ def test_inverse_modeling_for_regressions() -> None:  # noqa: C901
     # Set periodic boundary mesh and some of its properties
     pbc_mesh = PbcMesh.periodic_voronoi_from_random_seeds(nb_seeds=n_cells, width=width, height=height, random_key=0)
     # Note: those are base values so the following can be omitted
-    pbc_mesh.min_dist_T1 = 0.005
-    pbc_mesh.max_nb_iterations = 1000
-    pbc_mesh.tolerance = 1e-4
-    pbc_mesh.patience = 5
-    pbc_mesh.inner_solver = optax.sgd(learning_rate=0.01)  # inner solver
-    pbc_mesh.outer_solver = optax.adam(learning_rate=0.0001, nesterov=True)  # outer solver
-    pbc_mesh.bilevel_optimization_method = BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION
+    bilevel_optimizer = PbcBilevelOptimizer()
+    bilevel_optimizer.min_dist_T1 = 0.005
+    bilevel_optimizer.max_nb_iterations = 1000
+    bilevel_optimizer.tolerance = 1e-4
+    bilevel_optimizer.patience = 5
+    bilevel_optimizer.inner_solver = optax.sgd(learning_rate=0.01)  # inner solver
+    bilevel_optimizer.outer_solver = optax.adam(learning_rate=0.0001, nesterov=True)  # outer solver
+    bilevel_optimizer.bilevel_optimization_method = BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION
     # Other parameters are image_target (for cost_mesh2image), beta (for EP).
 
     # "old" way of doing it
@@ -103,7 +104,8 @@ def test_inverse_modeling_for_regressions() -> None:  # noqa: C901
         )
 
     # Energy minimization (init cond equilibrium)
-    pbc_mesh.inner_opt(loss_function_inner=energy)
+    bilevel_optimizer.loss_function_inner = energy
+    bilevel_optimizer.inner_optimization(mesh=pbc_mesh)
     # If you want to select only a subset of vertices, edges, and faces, it's possible:
     # pbc_mesh.inner_opt(
     #     loss_function_inner=energy,
@@ -125,13 +127,13 @@ def test_inverse_modeling_for_regressions() -> None:  # noqa: C901
     pbc_mesh_target.faces_params = jnp.asarray(mu_areas + std_areas * jax.random.normal(key, shape=(n_cells,)))
 
     # Energy minimization (target equilibrium)
-    pbc_mesh_target.inner_opt(loss_function_inner=energy)
+    bilevel_optimizer.inner_optimization(mesh=pbc_mesh_target)
 
     # OK now we obtained our target vertices, edges and faces, let's store them in pbc_mesh too,
     # so they become the mesh target.
-    pbc_mesh.vertices_target = pbc_mesh_target.vertices.copy()
-    pbc_mesh.edges_target = pbc_mesh_target.edges.copy()
-    pbc_mesh.faces_target = pbc_mesh_target.faces.copy()
+    bilevel_optimizer.vertices_target = pbc_mesh_target.vertices.copy()
+    bilevel_optimizer.edges_target = pbc_mesh_target.edges.copy()
+    bilevel_optimizer.faces_target = pbc_mesh_target.faces.copy()
     # We can discard pbc_mesh_target, which is of no use now
     del pbc_mesh_target
 
@@ -139,9 +141,9 @@ def test_inverse_modeling_for_regressions() -> None:  # noqa: C901
     def mapped_fixed_areas_target(face: Array) -> Array:
         return get_area(
             face,
-            pbc_mesh.vertices_target,
-            pbc_mesh.edges_target,
-            pbc_mesh.faces_target,
+            bilevel_optimizer.vertices_target,
+            bilevel_optimizer.edges_target,
+            bilevel_optimizer.faces_target,
             width,
             height,
             MAX_EDGES_IN_ANY_FACE,
@@ -179,6 +181,8 @@ def test_inverse_modeling_for_regressions() -> None:  # noqa: C901
             + (0.5 * K_areas) * jnp.sum(areas_part)
         )
 
+    bilevel_optimizer.loss_function_inner = energy_v2
+    bilevel_optimizer.loss_function_outer = cost_v2v
     for j in range(epochs + 1):
         t1 = perf_counter()
         print(
@@ -194,14 +198,14 @@ def test_inverse_modeling_for_regressions() -> None:  # noqa: C901
                     pbc_mesh.faces,
                     width,
                     height,
-                    pbc_mesh.vertices_target,
-                    pbc_mesh.edges_target,
-                    pbc_mesh.faces_target,
+                    bilevel_optimizer.vertices_target,
+                    bilevel_optimizer.edges_target,
+                    bilevel_optimizer.faces_target,
                 )
             )
         )
 
-        pbc_mesh.bilevel_opt(loss_function_inner=energy_v2, loss_function_outer=cost_v2v)
+        bilevel_optimizer.bilevel_optimization(pbc_mesh)
         print(perf_counter() - t1)
 
     t_end = perf_counter()

@@ -13,8 +13,8 @@ import jax.numpy as jnp
 import optax
 from numpy.testing import assert_allclose
 
+from vertax import PbcBilevelOptimizer, PbcMesh
 from vertax.energy import energy_shape_factor_homo
-from vertax.pbc import PbcMesh
 
 
 def test_forward_modeling_for_regressions() -> None:
@@ -23,22 +23,23 @@ def test_forward_modeling_for_regressions() -> None:
 
     # Settings
     n_cells = 100
-    # Initial condition
+    # Initial condition : Mesh creation
     L_box = jnp.sqrt(n_cells)
     width = float(L_box)
     height = float(L_box)
     pbc_mesh = PbcMesh.periodic_voronoi_from_random_seeds(nb_seeds=n_cells, width=width, height=height, random_key=1)
-    pbc_mesh.min_dist_T1 = 0.2
-
-    # Solver
-    pbc_mesh.inner_solver = optax.sgd(learning_rate=0.01)
-    pbc_mesh.max_nb_iterations = 1000
-    pbc_mesh.tolerance = 1e-4
-    pbc_mesh.patience = 5
-
+    # A mesh is not only vertices, edges and faces. We can attach parameters to them.
     pbc_mesh.vertices_params = jnp.asarray([0.0])
     pbc_mesh.edges_params = jnp.asarray([0.0])
     pbc_mesh.faces_params = jnp.asarray([3.7])
+
+    # Create a BilevelOptimizer
+    bilevel_optimizer = PbcBilevelOptimizer()  # Default parameters are mostly fine.
+    bilevel_optimizer.inner_solver = optax.sgd(learning_rate=0.01)
+    bilevel_optimizer.min_dist_T1 = 0.2
+    bilevel_optimizer.max_nb_iterations = 1000
+    bilevel_optimizer.tolerance = 1e-4
+    bilevel_optimizer.patience = 5
 
     def energy(
         vertTable: Array, heTable: Array, faceTable: Array, _vert_params: Array, _he_params: Array, face_params: Array
@@ -49,8 +50,10 @@ def test_forward_modeling_for_regressions() -> None:
         """
         return energy_shape_factor_homo(vertTable, heTable, faceTable, width, height, face_params)
 
+    # Set the optimizer inner loss function.
+    bilevel_optimizer.loss_function_inner = energy
     # Energy minimization
-    pbc_mesh.inner_opt(loss_function_inner=energy)
+    bilevel_optimizer.inner_optimization(mesh=pbc_mesh)
 
     print(f"Test forward modelling took {(perf_counter() - t_start):.2f} s.")
 

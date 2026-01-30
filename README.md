@@ -30,12 +30,11 @@ pip install "vertax"
 TODO @Alessandro : explain what it does
 
 ```python
-from jax import Array
 import jax.numpy as jnp
-import optax
+from jax import Array
 
+from vertax import PbcBilevelOptimizer, PbcMesh, plot_mesh
 from vertax.energy import energy_shape_factor_homo
-from vertax.pbc import PBCMesh
 
 # Settings
 n_cells = 100
@@ -44,7 +43,7 @@ L_box = jnp.sqrt(n_cells)
 width = float(L_box)
 height = float(L_box)
 # Create a mesh with periodic boundary conditions
-mesh = PBCMesh.periodic_voronoi_from_random_seeds(nb_seeds=n_cells, width=width, height=height, random_key=1)
+mesh = PbcMesh.periodic_voronoi_from_random_seeds(nb_seeds=n_cells, width=width, height=height, random_key=1)
 # Parameters such as tensions, target areas, ... can be attached to vertices, edges, faces.
 mesh.vertices_params = jnp.asarray([0.0])
 mesh.edges_params = jnp.asarray([0.0])
@@ -60,10 +59,12 @@ def energy(
     return energy_shape_factor_homo(vertTable, heTable, faceTable, width, height, face_params)
 
 # Energy minimization
-mesh.inner_opt(loss_function_inner=energy)
+bilevel_optimizer = PbcBilevelOptimizer()
+bilevel_optimizer.loss_function_inner = energy
+bilevel_optimizer.inner_optimization(mesh)
 
 mesh.save_mesh("mesh.npz")
-mesh.plot()
+plot_mesh(mesh)
 ```
 
 ## features

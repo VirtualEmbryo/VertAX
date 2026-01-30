@@ -9,8 +9,7 @@ import pytest
 from numpy.testing import assert_array_equal
 from tifffile import imread
 
-from vertax.pbc import PbcMesh
-from vertax.plot import plot_mesh
+from vertax import PbcMesh, plot_mesh
 from vertax.start import create_mesh_from_image, create_mesh_from_seeds
 
 
