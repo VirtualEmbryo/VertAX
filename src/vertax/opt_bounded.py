@@ -867,7 +867,7 @@ def outer_eq_prop_bounded(
         selected_hes,
         selected_faces,
         image_target,
-        beta=0.0,
+        beta=-beta,
         update_T1_func=update_T1_func,
     )
 
@@ -917,7 +917,7 @@ def outer_eq_prop_bounded(
         selected_hes,
         selected_faces,
         image_target,
-        beta=0.0,
+        beta=-beta,
     )
 
     grad_loss_ep_nudged_verts = grad(_loss_ep_static_bounded, argnums=4)(
@@ -959,7 +959,7 @@ def outer_eq_prop_bounded(
         selected_hes,
         selected_faces,
         image_target,
-        beta=0.0,
+        beta=-beta,
     )
 
     grad_loss_ep_nudged_hes = grad(_loss_ep_static_bounded, argnums=5)(
@@ -1001,7 +1001,7 @@ def outer_eq_prop_bounded(
         selected_hes,
         selected_faces,
         image_target,
-        beta=0.0,
+        beta=-beta,
     )
 
     grad_loss_ep_nudged_faces = grad(_loss_ep_static_bounded, argnums=6)(
