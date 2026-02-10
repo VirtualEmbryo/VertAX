@@ -188,6 +188,7 @@ def test_n_bilevel_opt() -> None:  # noqa: C901
     bilevel_optimizer.loss_function_inner = energy_v2
     bilevel_optimizer.loss_function_outer = cost_v2v
 
+    print(bilevel_optimizer.self_summary())
     bilevel_optimizer.do_n_bilevel_optimization(
         nb_epochs=epochs,
         mesh=pbc_mesh,

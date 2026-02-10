@@ -213,6 +213,11 @@ class _BilevelOptimizer:
         outer_cost_graph_filename = save_folder_path / "outer_cost_over_time.png"
         inner_cost_graph_filename = save_folder_path / "inner_cost_over_time.png"
         summary_filename = save_folder_path / "summary.csv"
+        parameters_filename = save_folder_path / "hyper-parameters.txt"
+
+        with parameters_filename.open("w") as f:
+            f.write(self.self_summary())
+
         all_epoch_data = []
         epoch_data = []
         if save_mesh_every > 0:
@@ -337,6 +342,29 @@ class _BilevelOptimizer:
                         "Epoch",
                         metric_name,
                     )
+
+    def self_summary(self) -> str:
+        """Give a summary of hyper-parameters of the optimizer."""
+        summary = f"Bi-level optimization method: {self.bilevel_optimization_method.value}\n"
+        if self.loss_function_inner is not None:
+            summary += f"Inner loss function: {self.loss_function_inner.__name__}\n"  # ty:ignore[unresolved-attribute]
+        else:
+            summary += "Inner loss function: None\n"
+        if self.loss_function_outer is not None:
+            summary += f"Outer loss function: {self.loss_function_outer.__name__}\n"  # ty:ignore[unresolved-attribute]
+        else:
+            summary += "Outer loss function: None\n"
+        summary += f"Max number of iterations: {self.max_nb_iterations}\n"
+        summary += f"Tolerance: {self.tolerance}\n"
+        summary += f"Patience: {self.patience}\n"
+        summary += f"Minimum distance for T1: {self.min_dist_T1}\n"
+        summary += f"Update T1: {self.update_T1}\n"
+        if self._update_T1_func is not None:
+            summary += f"Update T1 function: {self._update_T1_func.__name__}\n"  # ty:ignore[unresolved-attribute]
+        else:
+            summary += "Update T1 function: None\n"
+        summary += f"Beta: {self.beta}"
+        return summary
 
     def add_custom_metric(self, name: str, function: Callable[[Any, Any], float]) -> None:
         """Add a custom metric to the metrics to save when performing n bilevel optimizations.
