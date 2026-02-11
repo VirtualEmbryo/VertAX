@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from time import perf_counter
 from typing import TYPE_CHECKING
 
@@ -15,7 +16,6 @@ from vertax import PbcBilevelOptimizer, PbcMesh
 from vertax.cost import cost_v2v
 from vertax.geo import get_area, get_length
 from vertax.method_enum import BilevelOptimizationMethod
-from vertax.start import create_mesh_from_seeds
 
 if TYPE_CHECKING:
     from jax import Array
@@ -27,51 +27,27 @@ def test_inverse_modeling_for_regressions() -> None:  # noqa: C901
 
     # Settings
     n_cells = 20
+    width = math.sqrt(n_cells)
+    height = width
     epochs = 2
-    L_box = jnp.sqrt(n_cells)
-    width = float(L_box)
-    height = float(L_box)
     MAX_EDGES_IN_ANY_FACE = 20
 
     # Set periodic boundary mesh and some of its properties
     pbc_mesh = PbcMesh.periodic_voronoi_from_random_seeds(nb_seeds=n_cells, width=width, height=height, random_key=0)
-    # Note: those are base values so the following can be omitted
-    bilevel_optimizer = PbcBilevelOptimizer()
-    bilevel_optimizer.min_dist_T1 = 0.005
-    bilevel_optimizer.max_nb_iterations = 1000
-    bilevel_optimizer.tolerance = 1e-4
-    bilevel_optimizer.patience = 5
-    bilevel_optimizer.inner_solver = optax.sgd(learning_rate=0.01)  # inner solver
-    bilevel_optimizer.outer_solver = optax.adam(learning_rate=0.0001, nesterov=True)  # outer solver
-    bilevel_optimizer.bilevel_optimization_method = BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION
-    # Other parameters are image_target (for cost_mesh2image), beta (for EP).
-
-    # "old" way of doing it
-    key = jax.random.PRNGKey(0)  # change the seed for different results
-    L_box = jnp.sqrt(n_cells)
-    width = float(L_box)
-    height = float(L_box)
-    seeds = L_box * jax.random.uniform(key, shape=(n_cells, 2))
-    old_vertices, _, _ = create_mesh_from_seeds(seeds)
-    # The vertices have a very slight different position but this is ridiculously close
-    assert_allclose(pbc_mesh.vertices, old_vertices, rtol=1e-6)
-    # But note that for some reasons (still to be investigated) after 2 epochs the results
-    # have an absolute difference of 0.03 and relative difference of 0.1... which is something.
-    # so in order to "pass" the regression test for now, I use the "old" vertices positions.
-    pbc_mesh.vertices = old_vertices
 
     # Initial condition (parameters)
+    pbc_mesh.vertices_params = jnp.asarray([0.0])
+
     mu_tensions = 1.2
     std_tensions = 0.1
-    mu_areas = 1.0
-    std_areas = 0.0
     key = jax.random.PRNGKey(1)  # change the seed for different results
     he_params = mu_tensions + std_tensions * jax.random.normal(key, shape=(pbc_mesh.nb_edges,))
-    he_params_reference = he_params[0]
     # Set mesh parameters
-    pbc_mesh.vertices_params = jnp.asarray([0.0])
     pbc_mesh.edges_params = jnp.repeat(he_params, 2)
-    pbc_mesh.faces_params = jnp.asarray(mu_areas + std_areas * jax.random.normal(key, shape=(n_cells,)))
+
+    pbc_mesh.faces_params = jnp.asarray([1.0 for _ in range(pbc_mesh.nb_faces)])
+
+    he_params_reference = he_params[0]
 
     # Energy functions : Note that they use the width and height parameters now, defined earlier
     def area_part(face: Array, face_param: Array, vertTable: Array, heTable: Array, faceTable: Array) -> Array:
@@ -103,6 +79,18 @@ def test_inverse_modeling_for_regressions() -> None:  # noqa: C901
             + (0.5 * K_areas) * jnp.sum(areas_part)
         )
 
+    # Note: those are base values so the following can be omitted
+    bilevel_optimizer = PbcBilevelOptimizer()
+    bilevel_optimizer.update_T1 = True
+    bilevel_optimizer.min_dist_T1 = 0.005
+    bilevel_optimizer.max_nb_iterations = 1000
+    bilevel_optimizer.tolerance = 1e-4
+    bilevel_optimizer.patience = 5
+    bilevel_optimizer.inner_solver = optax.sgd(learning_rate=0.01)  # inner solver
+    bilevel_optimizer.outer_solver = optax.adam(learning_rate=0.0001, nesterov=True)  # outer solver
+    bilevel_optimizer.bilevel_optimization_method = BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION
+    # Other parameters are image_target (for cost_mesh2image), beta (for EP).
+
     # Energy minimization (init cond equilibrium)
     bilevel_optimizer.loss_function_inner = energy
     bilevel_optimizer.inner_optimization(mesh=pbc_mesh)
@@ -124,7 +112,7 @@ def test_inverse_modeling_for_regressions() -> None:  # noqa: C901
     # Set target parameters
     pbc_mesh_target.vertices_params = jnp.asarray([0.0])  # Same as the first mesh we copied so we could have omit that.
     pbc_mesh_target.edges_params = jnp.repeat(he_params_target, 2)
-    pbc_mesh_target.faces_params = jnp.asarray(mu_areas + std_areas * jax.random.normal(key, shape=(n_cells,)))
+    pbc_mesh_target.faces_params = jnp.asarray([1.0 for _ in range(pbc_mesh_target.nb_faces)])
 
     # Energy minimization (target equilibrium)
     bilevel_optimizer.inner_optimization(mesh=pbc_mesh_target)
