@@ -609,7 +609,7 @@ def _loss_ep_static(
     return loss_inner + (beta * loss_outer)
 
 
-@partial(jit, static_argnums=(6, 10, 11, 17, 18, 19, 20, 21, 22, 23))
+@partial(jit, static_argnums=(6, 10, 11, 17, 18, 19, 20, 21, 22, 23, 24))
 def _minimize_ep(
     vertTable: Array,
     heTable: Array,
@@ -628,14 +628,14 @@ def _minimize_ep(
     selected_faces: Array | None,  # 12, 13, 14
     image_target: Array | None,
     beta: float,  # 15, 16
-    solver: optax.GradientTransformation,  # 17 [STATIC] <--- FIXED
+    solver: optax.GradientTransformation,  # 17 [STATIC]
     min_dist_T1: float,  # 18
     iterations_max: int = 1000,
     tolerance: float = 1e-3,
     patience: int = 5,  # 19, 20, 21 [STATIC]
     width: float = 1,
     height: float = 1,
-    update_t1_func: UpdateT1Func = update_T1,
+    update_t1_func: UpdateT1Func = update_T1,  # 22, 23, 24 : [STATIC]
 ) -> tuple[tuple[Array, Array, Array, Array, Array, Array], tuple[Array, Array]]:
     # 1. Helper: Bind the fixed arguments to the loss function.
     def loss_evaluated(vt: Array, ht: Array, ft: Array, vp: Array, hp: Array, fp: Array) -> Array:
