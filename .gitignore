@@ -9,6 +9,7 @@ vertices.npy
 plot_code
 Alessandro_plot_code
 .ipynb_checkpoints
+test_n_bilevel/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
