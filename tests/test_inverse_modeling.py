@@ -88,7 +88,7 @@ def test_inverse_modeling_for_regressions() -> None:  # noqa: C901
     bilevel_optimizer.patience = 5
     bilevel_optimizer.inner_solver = optax.sgd(learning_rate=0.01)  # inner solver
     bilevel_optimizer.outer_solver = optax.adam(learning_rate=0.0001, nesterov=True)  # outer solver
-    bilevel_optimizer.bilevel_optimization_method = BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION
+    bilevel_optimizer.bilevel_optimization_method = BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION
     # Other parameters are image_target (for cost_mesh2image), beta (for EP).
 
     # Energy minimization (init cond equilibrium)

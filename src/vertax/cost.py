@@ -192,8 +192,6 @@ def cost_v2v(
     if selected_faces is None:
         selected_faces = jnp.arange(faceTable.shape[0])
 
-    # L_box = jnp.sqrt(len(faceTable))
-
     def squared_distance(v: Array, vertTable: Array, vertTable_target: Array, width: float, height: float) -> Array:
         return (
             jnp.min(

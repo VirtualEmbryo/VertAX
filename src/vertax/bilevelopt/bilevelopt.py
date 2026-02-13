@@ -25,9 +25,7 @@ class _BilevelOptimizer:
     def __init__(self) -> None:
         """Initialize shared parameters and hyper-parameters between Bi-level optimizers."""
         self.custom_metrics: dict[str, tuple[Callable[[Any, Any], float], list[float], list[float]]] = {}
-        self.bilevel_optimization_method: BilevelOptimizationMethod = (
-            BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION
-        )
+        self.bilevel_optimization_method: BilevelOptimizationMethod = BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION
         self.inner_solver: optax.GradientTransformation = optax.sgd(learning_rate=0.01)
         self.outer_solver: optax.GradientTransformation = optax.adam(learning_rate=0.0001, nesterov=True)
         self.loss_function_inner: Callable | None = None
@@ -306,7 +304,6 @@ class _BilevelOptimizer:
                     ],
                 ).to_csv(summary_filename)
 
-                # TODO : report once bilevel and mesh params
                 # Report in log.
                 if also_report_to_stdout:
                     msg = f"\nEpoch {epoch}/{nb_epochs} : Outer cost = {outer_cost}, Inner cost = {inner_cost}"
