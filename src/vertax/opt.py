@@ -1101,10 +1101,30 @@ def outer_implicit(
     # MINRES solves H * X = B. We want X = -H^{-1} * B, so we solve H * X = -B
 
     b_verts = -cd_verts_np
-    L_in_derivative_verts_np, _info_v = minres(H_np, b_verts)
+    b_verts_np = np.asarray(b_verts)
+    N_rhs = b_verts.shape[1]
+
+    Lambda_solutions = []
+    # Loop over the columns (right-hand sides)
+    for i in range(N_rhs):
+        b_vector = b_verts_np[:, i]
+        # Solve H_np * Lambda_i = b_vector
+        Lambda_i_np, _ = minres(H_np, b_vector)
+        Lambda_solutions.append(Lambda_i_np)
+    L_in_derivative_verts_np = jnp.stack(Lambda_solutions, axis=1)
 
     b_hes = -cd_hes_np
-    L_in_derivative_hes_np, _info_h = minres(H_np, b_hes)
+    b_hes_np = np.asarray(b_hes)
+    N_rhs = b_hes.shape[1]
+
+    Lambda_solutions = []
+    # Loop over the columns (right-hand sides)
+    for i in range(N_rhs):
+        b_vector = b_hes_np[:, i]
+        # Solve H_np * Lambda_i = b_vector
+        Lambda_i_np, _ = minres(H_np, b_vector)
+        Lambda_solutions.append(Lambda_i_np)
+    L_in_derivative_hes_np = jnp.stack(Lambda_solutions, axis=1)
 
     b_faces = -cd_faces_np
 
