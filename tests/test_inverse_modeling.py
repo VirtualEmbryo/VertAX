@@ -36,7 +36,7 @@ def test_inverse_modeling_for_regressions() -> None:  # noqa: C901
     pbc_mesh = PbcMesh.periodic_voronoi_from_random_seeds(nb_seeds=n_cells, width=width, height=height, random_key=0)
 
     # Initial condition (parameters)
-    pbc_mesh.vertices_params = jnp.asarray([0.0])
+    pbc_mesh.vertices_params = jnp.asarray([0.0 for _ in range(pbc_mesh.nb_vertices)])
 
     mu_tensions = 1.2
     std_tensions = 0.1
