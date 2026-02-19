@@ -1125,23 +1125,23 @@ def outer_implicit_bounded(
     ################            Start mod           ################
     ################################################################
 
-    vert_flat_eq = jnp.concatenate((vertTable_eq.flatten(), angTable_eq))
+    vertang_flat_eq = jnp.concatenate((vertTable_eq.flatten(), angTable_eq))
 
     # H = d^2 L_in / d vertangTable^2
     G_op = grad(L_in_flatten, argnums=0)
 
-    dtype = vert_flat_eq.dtype
+    dtype = vertang_flat_eq.dtype
 
     def matvec(v: ArrayLike) -> Array:
         v_casted = jnp.asarray(v, dtype=dtype)
         _, Hv = jvp(
             lambda vfe: G_op(vfe, heTable_eq, faceTable_eq, vert_params, he_params, face_params),
-            (vert_flat_eq,),
+            (vertang_flat_eq,),
             (v_casted,),
         )
         return Hv
 
-    nv = len(vert_flat_eq)
+    nv = len(vertang_flat_eq)
     H_np = LinearOperator((nv, nv), matvec=matvec)  # type: ignore
 
     # Compute cross-derivatives (dL_in / d vertangTable d param)
@@ -1150,13 +1150,13 @@ def outer_implicit_bounded(
     crossderivative_faces_op = jacfwd(G_op, argnums=5)
 
     crossderivative_verts = crossderivative_verts_op(
-        vert_flat_eq, heTable_eq, faceTable_eq, vert_params, he_params, face_params
+        vertang_flat_eq, heTable_eq, faceTable_eq, vert_params, he_params, face_params
     )
     crossderivative_hes = crossderivative_hes_op(
-        vert_flat_eq, heTable_eq, faceTable_eq, vert_params, he_params, face_params
+        vertang_flat_eq, heTable_eq, faceTable_eq, vert_params, he_params, face_params
     )
     crossderivative_faces = crossderivative_faces_op(
-        vert_flat_eq, heTable_eq, faceTable_eq, vert_params, he_params, face_params
+        vertang_flat_eq, heTable_eq, faceTable_eq, vert_params, he_params, face_params
     )
 
     # Convert JAX arrays to NumPy arrays for use with scipy.sparse.linalg.minres
@@ -1223,6 +1223,9 @@ def outer_implicit_bounded(
                 angTable_target,
                 heTable_target,
                 faceTable_target,
+                selected_verts,
+                selected_hes,
+                selected_faces,
                 image_target,
             )[:, :2].flatten(),
             grad(L_out, argnums=1)(
@@ -1234,6 +1237,9 @@ def outer_implicit_bounded(
                 angTable_target,
                 heTable_target,
                 faceTable_target,
+                selected_verts,
+                selected_hes,
+                selected_faces,
                 image_target,
             ),
         ]
@@ -1246,6 +1252,172 @@ def outer_implicit_bounded(
 
     params = {"vert_params": vert_params, "he_params": he_params, "face_params": face_params}
     grads = {"vert_params": grad_verts, "he_params": grad_hes, "face_params": grad_faces}
+    opt_state = solver_outer.init(params)
+    updates, opt_state = solver_outer.update(grads, opt_state, params)
+    updated_params = optax.apply_updates(params, updates)
+
+    vert_params = updated_params["vert_params"]  # type: ignore
+    he_params = updated_params["he_params"]  # type: ignore
+    face_params = updated_params["face_params"]  # type: ignore
+
+    return vert_params, he_params, face_params
+
+
+##########################
+## ADJOINT STATE METHOD ##
+##########################
+
+
+def outer_adjoint_state_bounded(
+    vertTable: Array,
+    angTable: Array,
+    heTable: Array,
+    faceTable: Array,
+    vert_params: Array,
+    he_params: Array,
+    face_params: Array,
+    vertTable_target: Array,
+    angTable_target: Array,
+    heTable_target: Array,
+    faceTable_target: Array,
+    L_in: InnerLossFunctionBounded,
+    L_out: OuterLossFunction,
+    solver_inner: optax.GradientTransformation,
+    solver_outer: optax.GradientTransformation,
+    min_dist_T1: float,
+    iterations_max: int,
+    tolerance: float,
+    patience: int,
+    selected_verts: Array | None,
+    selected_hes: Array | None,
+    selected_faces: Array | None,
+    image_target: Array | None,
+    update_T1_func: UpdateT1FuncBounded = update_T1_bounded,
+) -> tuple[Array, Array, Array]:
+    """Outer optimization for adjoint state method."""
+
+    def L_in_flatten(  # noqa: N802
+        vertangTable_flatten: Array,
+        heTable: Array,
+        faceTable: Array,
+        vert_params: Array,
+        he_params: Array,
+        face_params: Array,
+    ) -> Array:
+        vertTable_tmp = vertangTable_flatten[: -heTable.shape[0] // 2].reshape(
+            (len(vertangTable_flatten) - heTable.shape[0] // 2) // 2, 2
+        )
+        angTable_tmp = vertangTable_flatten[-heTable.shape[0] // 2 :]
+        return L_in(
+            vertTable_tmp,
+            angTable_tmp,
+            heTable,
+            faceTable,
+            selected_verts,
+            selected_hes,
+            selected_faces,
+            vert_params,
+            he_params,
+            face_params,
+        )
+
+    (vertTable_eq, angTable_eq, heTable_eq, faceTable_eq), _L_in_value = inner_opt_bounded(
+        vertTable,
+        angTable,
+        heTable,
+        faceTable,
+        vert_params,
+        he_params,
+        face_params,
+        L_in,
+        solver_inner,
+        min_dist_T1,
+        iterations_max,
+        tolerance,
+        patience,
+        selected_verts,
+        selected_hes,
+        selected_faces,
+        update_T1_func,
+    )
+
+    vertTable_eq_flat = jnp.concatenate((vertTable_eq.flatten(), angTable_eq))
+
+    G_op = grad(L_in_flatten, argnums=0)
+
+    dtype = vertTable_eq_flat.dtype
+
+    def matvec(v: ArrayLike) -> Array:
+        v_casted = jnp.asarray(v, dtype=dtype)
+        _, Hv = jvp(
+            lambda vfe: G_op(vfe, heTable_eq, faceTable_eq, vert_params, he_params, face_params),
+            (vertTable_eq_flat,),
+            (v_casted,),
+        )
+        return Hv
+
+    nv = len(vertTable_eq_flat)
+    H_np = LinearOperator((nv, nv), matvec=matvec)  # type: ignore
+
+    gradout = jnp.concatenate(
+        [
+            grad(L_out, argnums=0)(
+                vertTable_eq,
+                angTable_eq,
+                heTable_eq,
+                faceTable_eq,
+                vertTable_target,
+                angTable_target,
+                heTable_target,
+                faceTable_target,
+                selected_verts,
+                selected_hes,
+                selected_faces,
+                image_target,
+            )[:, :2].flatten(),
+            grad(L_out, argnums=1)(
+                vertTable_eq,
+                angTable_eq,
+                heTable_eq,
+                faceTable_eq,
+                vertTable_target,
+                angTable_target,
+                heTable_target,
+                faceTable_target,
+                selected_verts,
+                selected_hes,
+                selected_faces,
+                image_target,
+            ),
+        ]
+    )
+
+    # Convert JAX arrays to NumPy arrays for SciPy function call
+    gradout_np = np.asarray(gradout)
+
+    # Call SciPy MINRES. H is symmetric and possibly indefinite, so MINRES is suitable.
+    Lambda_np, _ = minres(H_np, gradout_np)
+
+    # Convert the result back to a JAX array
+    Lambda = jnp.asarray(Lambda_np)
+
+    crossderivative_verts = jacfwd(G_op, argnums=3)(
+        vertTable_eq_flat, heTable_eq, faceTable_eq, vert_params, he_params, face_params
+    )
+    crossderivative_hes = jacfwd(G_op, argnums=4)(
+        vertTable_eq_flat, heTable_eq, faceTable_eq, vert_params, he_params, face_params
+    )
+    crossderivative_faces = jacfwd(G_op, argnums=5)(
+        vertTable_eq_flat, heTable_eq, faceTable_eq, vert_params, he_params, face_params
+    )
+
+    grad_verts = -Lambda @ crossderivative_verts
+    grad_hes = -Lambda @ crossderivative_hes
+    grad_faces = -Lambda @ crossderivative_faces
+
+    params = {"vert_params": vert_params, "he_params": he_params, "face_params": face_params}
+    grads = {"vert_params": grad_verts, "he_params": grad_hes, "face_params": grad_faces}
+
     opt_state = solver_outer.init(params)
     updates, opt_state = solver_outer.update(grads, opt_state, params)
     updated_params = optax.apply_updates(params, updates)

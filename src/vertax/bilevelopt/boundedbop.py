@@ -9,6 +9,7 @@ from vertax.meshes.mesh import Mesh
 from vertax.opt_bounded import (
     BilevelOptimizationMethod,
     inner_opt_bounded,
+    outer_adjoint_state_bounded,
     outer_eq_prop_bounded,
     outer_implicit_bounded,
     outer_opt_bounded,
@@ -256,8 +257,32 @@ class BoundedBilevelOptimizer(_BilevelOptimizer):
                         self._update_T1_func,
                     )
                 case BilevelOptimizationMethod.ADJOINT_STATE:
-                    msg = "Adjoint state method is not implemented for bounded meshes."
-                    raise AttributeError(msg)
+                    mesh.vertices_params, mesh.edges_params, mesh.faces_params = outer_adjoint_state_bounded(
+                        mesh.vertices,
+                        mesh.angles,
+                        mesh.edges,
+                        mesh.faces,
+                        mesh.vertices_params,
+                        mesh.edges_params,
+                        mesh.faces_params,
+                        self.vertices_target,
+                        self.angles_target,
+                        self.edges_target,
+                        self.faces_target,
+                        self.loss_function_inner,
+                        self.loss_function_outer,
+                        self.inner_solver,
+                        self.outer_solver,
+                        self.min_dist_T1,
+                        self.max_nb_iterations,
+                        self.tolerance,
+                        self.patience,
+                        selected_vertices,
+                        selected_edges,
+                        selected_faces,
+                        self.image_target,
+                        self._update_T1_func,
+                    )
                 case _:
                     msg = f"Method not recognized. Must be a BilevelOptimizationMethod. \
                         Got {self.bilevel_optimization_method}."

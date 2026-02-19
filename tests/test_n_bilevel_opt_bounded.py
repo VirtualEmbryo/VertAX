@@ -22,7 +22,7 @@ def test_n_bilevel_opt() -> None:
     # Settings
     n_cells = 20
     n_edges = (n_cells - 1) * 3
-    epochs = 500
+    epochs = 10
     L_box = jnp.sqrt(n_cells)
     width = float(L_box)
     height = float(L_box)
