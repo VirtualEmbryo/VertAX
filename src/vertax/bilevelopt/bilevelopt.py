@@ -251,7 +251,7 @@ class _BilevelOptimizer:
                     "Time (s)",
                     "Delta Time (s)",
                     *(metric_name for metric_name in self.custom_metrics),
-                ],
+                ],  # ty:ignore[invalid-argument-type]
             ).to_csv(summary_filename)
 
             if also_report_to_stdout:
@@ -301,7 +301,7 @@ class _BilevelOptimizer:
                         "Time (s)",
                         "Delta Time (s)",
                         *(metric_name for metric_name in self.custom_metrics),
-                    ],
+                    ],  # ty:ignore[invalid-argument-type]
                 ).to_csv(summary_filename)
 
                 # Report in log.

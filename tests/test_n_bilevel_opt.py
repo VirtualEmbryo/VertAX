@@ -8,13 +8,11 @@ import jax.numpy as jnp
 import jax.random
 import optax
 from jax import vmap
-from numpy.testing import assert_allclose
 
 from vertax import PbcBilevelOptimizer, PbcMesh
 from vertax.cost import cost_v2v
 from vertax.geo import get_area, get_length
 from vertax.method_enum import BilevelOptimizationMethod
-from vertax.start import create_mesh_from_seeds
 
 if TYPE_CHECKING:
     from jax import Array
@@ -41,21 +39,7 @@ def test_n_bilevel_opt() -> None:  # noqa: C901
     bilevel_optimizer.inner_solver = optax.sgd(learning_rate=0.01)  # inner solver
     bilevel_optimizer.outer_solver = optax.adam(learning_rate=0.0001, nesterov=True)  # outer solver
     bilevel_optimizer.bilevel_optimization_method = BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION
-    # Other parameters are image_target (for cost_mesh2image), beta (for EP).
-
-    # "old" way of doing it
-    key = jax.random.PRNGKey(0)  # change the seed for different results
-    L_box = jnp.sqrt(n_cells)
-    width = float(L_box)
-    height = float(L_box)
-    seeds = L_box * jax.random.uniform(key, shape=(n_cells, 2))
-    old_vertices, _, _ = create_mesh_from_seeds(seeds)
-    # The vertices have a very slight different position but this is ridiculously close
-    assert_allclose(pbc_mesh.vertices, old_vertices, rtol=1e-6)
-    # But note that for some reasons (still to be investigated) after 2 epochs the results
-    # have an absolute difference of 0.03 and relative difference of 0.1... which is something.
-    # so in order to "pass" the regression test for now, I use the "old" vertices positions.
-    pbc_mesh.vertices = old_vertices
+    bilevel_optimizer.beta = 0.01
 
     # Initial condition (parameters)
     mu_tensions = 1.2

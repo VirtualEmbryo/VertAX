@@ -10,6 +10,7 @@ plot_code
 Alessandro_plot_code
 .ipynb_checkpoints
 test_n_bilevel/
+test_n_bilevel_bounded/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
