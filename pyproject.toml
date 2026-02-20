@@ -149,7 +149,6 @@ markers = ["long: marks tests as slow (deselect with '-m \"not slow\"')"]
 
 [dependency-groups]
 dev = [
-    "marimo>=0.19.11",
     "pytest>=8.4.2",
     "scalene>=1.5.55",
 ]
