@@ -185,7 +185,8 @@ class _BilevelOptimizer:
         pre_inner_optimization: bool = False,
         report_every: int = 0,
         also_report_to_stdout: bool = False,
-        save_mesh_every: int = 0,
+        save_plotmesh_every: int = 0,
+        save_mesh_data_every: int = 0,
         save_folder: str = ".",
     ) -> None:
         """Optimize the mesh for the loss function given.
@@ -202,12 +203,14 @@ class _BilevelOptimizer:
             pre_inner_optimization (bool = False): Whether to perform an optional initial inner optimization first.
             report_every (int = 0): If strictly positive, report current state (costs, metrics, time) at this frequency.
             also_report_to_stdout (bool = False): Whether to also report to stdout (print).
-            save_mesh_every (int = 0): If positive, save the mesh data and a plot at this frequency.
+            save_plotmesh_every (int = 0): If positive, save the plot of the mesh at this frequency.
+            save_mesh_data_every (int = 0): If positive, save the mesh data at this frequency.
             save_folder: (str = "."): Base folder where to save data if needed.
         """
         save_folder_path = Path(save_folder)
         save_folder_path.mkdir(parents=True, exist_ok=True)
-        mesh_save_folder = save_folder_path / "meshes"
+        mesh_save_plot_folder = save_folder_path / "meshes_plot"
+        mesh_save_data_folder = save_folder_path / "meshes_data"
         outer_cost_graph_filename = save_folder_path / "outer_cost_over_time.png"
         inner_cost_graph_filename = save_folder_path / "inner_cost_over_time.png"
         summary_filename = save_folder_path / "summary.csv"
@@ -218,9 +221,12 @@ class _BilevelOptimizer:
 
         all_epoch_data = []
         epoch_data = []
-        if save_mesh_every > 0:
-            mesh_save_folder.mkdir(parents=True, exist_ok=True)
-            plot_mesh(mesh, show=False, save=True, save_path=str(mesh_save_folder / "mesh_epoch_0.png"))
+        if save_plotmesh_every > 0:
+            mesh_save_plot_folder.mkdir(parents=True, exist_ok=True)
+            plot_mesh(mesh, show=False, save=True, save_path=str(mesh_save_plot_folder / "mesh_epoch_0.png"))
+        if save_mesh_data_every > 0:
+            mesh_save_data_folder.mkdir(parents=True, exist_ok=True)
+            mesh.save_mesh(path=str(mesh_save_data_folder / "mesh_epoch_0.npz"))
 
         x_epochs: list[float] = []
         y_outer_costs: list[float] = []
@@ -274,8 +280,10 @@ class _BilevelOptimizer:
             total_time = t_end_of_epoch - t_initial
             delta_time = t_end_of_epoch - t_begin_of_epoch
 
-            if save_mesh_every > 0 and epoch % save_mesh_every == 0:
-                plot_mesh(mesh, show=False, save=True, save_path=str(mesh_save_folder / f"mesh_epoch_{epoch}.png"))
+            if save_plotmesh_every > 0 and epoch % save_plotmesh_every == 0:
+                plot_mesh(mesh, show=False, save=True, save_path=str(mesh_save_plot_folder / f"mesh_epoch_{epoch}.png"))
+            if save_mesh_data_every > 0 and epoch % save_mesh_data_every == 0:
+                mesh.save_mesh(path=str(mesh_save_data_folder / f"mesh_epoch_{epoch}.npz"))
 
             if report_every > 0 and epoch % report_every == 0:
                 # Compute results data for this step

@@ -75,7 +75,7 @@ class BoundedMesh(Mesh):
     def save_mesh(self, path: str) -> None:
         """Save mesh to a file.
 
-        All BoundedMesh data is saved, except for the solvers that are not saved.
+        All BoundedMesh data is saved.
 
         Args:
             path (str): Path to the saved file. The extension is .npz.
@@ -99,7 +99,7 @@ class BoundedMesh(Mesh):
     def load_mesh(cls, path: str) -> Self:
         """Load a mesh from a file.
 
-        All BoundedMesh data is reloaded, except for the solvers that are not saved.
+        All BoundedMesh data is reloaded.
 
         Args:
             path (str): Path to the mesh file (.npz).

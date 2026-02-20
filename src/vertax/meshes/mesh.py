@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, NoReturn, TypeVar
+from typing import Any, NoReturn, Self, TypeVar
 
 import jax.numpy as jnp
 from jax import Array
@@ -47,6 +47,30 @@ class Mesh(metaclass=NoPublicConstructor):
         self.vertices_params: Array = jnp.array([])
         self.edges_params: Array = jnp.array([])
         self.faces_params: Array = jnp.array([])
+
+    def save_mesh(self, path: str) -> None:
+        """Save mesh to a file.
+
+        All mesh data is saved. Must be implemented by child classes.
+
+        Args:
+            path (str): Path to the saved file. The extension is .npz.
+        """
+        raise NotImplementedError
+
+    @classmethod
+    def load_mesh(cls, path: str) -> Self:
+        """Load a mesh from a file.
+
+        Must be implemented by child classes.
+
+        Args:
+            path (str): Path to the mesh file (.npz).
+
+        Returns:
+            Mesh: the mesh loaded from the .npz file.
+        """
+        raise NotImplementedError
 
     @property
     def nb_vertices(self) -> int:

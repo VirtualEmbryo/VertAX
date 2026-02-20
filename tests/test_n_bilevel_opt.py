@@ -178,7 +178,8 @@ def test_n_bilevel_opt() -> None:  # noqa: C901
         mesh=pbc_mesh,
         report_every=1,
         also_report_to_stdout=True,
-        save_mesh_every=10,
+        save_plotmesh_every=10,
+        save_mesh_data_every=10,
         save_folder="test_n_bilevel",
     )
 
