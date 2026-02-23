@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./figures/vertax_text.png" alt="VertAX" width="280">
+  <img src="./figures/vertax_text.png" alt="VertAX" width="300">
 </p>
 
 <div align="center">
@@ -41,11 +41,11 @@ VertAX frames inverse problems within a unified **bilevel optimization** paradig
 
 $$
 \begin{aligned}
-\textbf{Inner problem (physics):} \quad 
-& X^*_{\theta} \in \arg\min_{X} \; E(X,\theta)
-&& \leftarrow \text{mechanical equilibrium} \\[6pt]
-\textbf{Outer problem (learning):} \quad 
-& \theta^* \in \arg\min_{\theta} \; C\!\left(X^*_{\theta}\right)
+\textbf{Inner problem (physics):} \quad
+& X^{\ast}_{\theta} \in \arg\min_{X} E(X,\theta)
+&& \leftarrow \text{mechanical equilibrium}\\
+\textbf{Outer problem (learning):} \quad
+& \theta^{\ast} \in \arg\min_{\theta} C\left(X^{\ast}_{\theta}\right)
 && \leftarrow \text{match data or design target}
 \end{aligned}
 $$
@@ -76,12 +76,6 @@ VertAX handles **T1 neighbor exchanges** automatically: when an edge shortens be
 ### 📐 Half-edge data structure
 
 The mesh topology is encoded in three tables (`vertTable`, `heTable`, `faceTable`), separating geometry from connectivity for fast, JIT-friendly access. In bounded mode an additional `angTable` stores boundary arc angles.
-
-<p align="center">
-  <img src="./figures/geo.png" alt="VertAX Geometry" width="300">
-</p>
-
-*Figure: VertAX simulation modes. Periodic and curved boundary conditions.*
 
 ---
 
@@ -138,12 +132,6 @@ optimizer.inner_optimization(mesh)
 mesh.save_mesh("equilibrium.npz")
 plot_mesh(mesh)
 ```
-
-<p align="center">
-  <img src="./figures/forward.png" alt="VertAX Forward" width="300">
-</p>
-
-*Figure: VertAX forward modeling.*
 
 ---
 
@@ -268,12 +256,6 @@ plot_mesh(
     title="Inferred tensions and areas"
 )
 ```
-
-<p align="center">
-  <img src="./figures/inverse.png" alt="VertAX Inverse" width="300">
-</p>
-
-*Figure: VertAX inverse modeling.*
 
 ---
 
@@ -512,9 +494,9 @@ On synthetic inverse problems (E₁, 20–60 cells), all three gradient strategi
 - ✅ Forward vertex modeling (periodic and bounded)
 
 - ✅ Inverse vertex modeling via :
-    - Automatic differentiation (AD, forward-mode `jacfwd`)
-    - Implicit differentiation (adjoint-state VJP and sensitivity JVP)
-    - Equilibrium propagation (first-order and second-order centered estimators)
+    - ⚙️ Automatic differentiation (AD, forward-mode `jacfwd`)
+    - ⚙️ Implicit differentiation (adjoint-state VJP and sensitivity JVP)
+    - ⚙️ Equilibrium propagation (first-order and second-order centered estimators)
 
 - ✅ Custom energy and cost functions in plain Python
 
