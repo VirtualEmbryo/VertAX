@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./figures/vertax_text_FINAL.png" alt="VertAX Concept" width="280">
+  <img src="./figures/vertax_text.png" alt="VertAX" width="280">
 </p>
 
 <div align="center">
@@ -53,7 +53,7 @@ $$
 The inner problem finds the equilibrium configuration $X^*$ of a tissue for a fixed parameter set $\theta$ (tensions, shape factors, ...). The outer problem then adjusts $\theta$ to minimize a user-defined cost $C$ — such as mismatch to microscopy images or deviation from a desired morphology.
 
 <p align="center">
-  <img src="./figures/figure1_bis_FINAL_1.png" alt="VertAX Concept" width="500">
+  <img src="./figures/concept.png" alt="VertAX Concept" width="500">
 </p>
 
 *Figure: VertAX bilevel optimization loop. Inverse modeling tasks: force inference, mechanical design, patterning.*
@@ -69,26 +69,6 @@ The inner problem finds the equilibrium configuration $X^*$ of a tissue for a fi
 | **Periodic** | Bulk tissue dynamics, no explicit boundaries | Random Voronoi seeds or segmented images (Cellpose) |
 | **Bounded** | Finite tissue clusters with curved interfaces | Random Voronoi seeds; boundary arcs as additional DOF |
 
-### ⚗️ Built-in energy functions
-
-Two classical energy formulations ship out-of-the-box:
-
-**$E_1$ — Shape factor energy:**
-$$
-E_1 = \sum_{\alpha} (a_{\alpha} - 1)^2
-      + \sum_{\alpha} (p_{\alpha} - p^0_{\alpha})^2
-$$
-where $a_{\alpha} = A_{\alpha}/A_{0}$ is the rescaled area and $p_{\alpha} = P_{\alpha}/\sqrt{A_{0}}$ the shape factor of cell $\alpha$.
-
-**$E_2$ — Line tension energy:**
-$$
-E_2 = \frac{1}{2} K \sum_{\alpha} (A_{\alpha} - A^{0}_{\alpha})^2
-      + \sum_{ij} \gamma_{ij} \ell_{ij}
-$$
-where $\gamma_{ij}$ are edge-specific line tensions and $\ell_{ij}$ edge lengths.
-
-Both energies can be mixed, extended, or replaced entirely with your own Python function.
-
 ### 🔀 T1 topological transitions
 
 VertAX handles **T1 neighbor exchanges** automatically: when an edge shortens below a threshold, two candidate configurations are evaluated (flip vs. stretch) and the one with lower energy is accepted.
@@ -96,6 +76,12 @@ VertAX handles **T1 neighbor exchanges** automatically: when an edge shortens be
 ### 📐 Half-edge data structure
 
 The mesh topology is encoded in three tables (`vertTable`, `heTable`, `faceTable`), separating geometry from connectivity for fast, JIT-friendly access. In bounded mode an additional `angTable` stores boundary arc angles.
+
+<p align="center">
+  <img src="./figures/geo.png" alt="VertAX Geometry" width="300">
+</p>
+
+*Figure: VertAX simulation modes. Periodic and curved boundary conditions.*
 
 ---
 
@@ -152,6 +138,12 @@ optimizer.inner_optimization(mesh)
 mesh.save_mesh("equilibrium.npz")
 plot_mesh(mesh)
 ```
+
+<p align="center">
+  <img src="./figures/forward.png" alt="VertAX Forward" width="300">
+</p>
+
+*Figure: VertAX forward modeling.*
 
 ---
 
@@ -276,6 +268,12 @@ plot_mesh(
     title="Inferred tensions and areas"
 )
 ```
+
+<p align="center">
+  <img src="./figures/inverse.png" alt="VertAX Inverse" width="300">
+</p>
+
+*Figure: VertAX inverse modeling.*
 
 ---
 
@@ -444,6 +442,15 @@ optimizer.bilevel_optimization_method = BilevelOptimizationMethod.EQUILIBRIUM_PR
 | `get_edge_length(edge, vertTable, heTable)` | Inner edge length (bounded) |
 | `get_surface_length(edge, vertTable, angTable, heTable)` | Boundary arc length (bounded) |
 
+### Built-in energy functions (`vertax.energy`)
+
+| Energy | Formula | Parameters | Use case |
+|---|---|---|---|
+| **E₁** — Shape factor | `Σ_α (a_α − 1)² + Σ_α (p_α − p⁰_α)²` | Per-cell target shape factor `p⁰_α`; `a_α = A_α/A₀`, `p_α = P_α/√A₀` | Cell-scale heterogeneity, rigidity transitions |
+| **E₂** — Line tension | `½K Σ_α (A_α − A⁰_α)² + Σ_{ij} γ_{ij} ℓ_{ij}` | Elastic modulus `K`, per-cell target area `A⁰_α`, per-edge tension `γ_{ij}` | Force inference, convergent extension |
+
+Both energies can be mixed, extended, or replaced entirely with your own Python function.
+
 ### Built-in cost functions (`vertax.cost`)
 
 | Function | Description |
@@ -451,6 +458,8 @@ optimizer.bilevel_optimization_method = BilevelOptimizationMethod.EQUILIBRIUM_PR
 | `cost_v2v` | Vertex-to-vertex MSE |
 | `cost_mesh2image` | Mesh-to-image MSE
 | `cost_ratio` | Aspect ratio cost `(a₁/a₂ − 2)²` |
+
+Cost functions can be mixed, extended, or replaced entirely with your own Python function.
 
 ### Plotting (`vertax`)
 
