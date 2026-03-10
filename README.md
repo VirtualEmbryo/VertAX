@@ -1,22 +1,35 @@
-<p align="center">
-  <img src="./figures/vertax_text.png" alt="VertAX" width="300">
-</p>
-
-<div align="center">
+<div align="left">
 
 <!-- Badges -->
-<!-- [![License](https://img.shields.io/pypi/l/vertAX.svg)](https://github.com/vertAX/vertAX/raw/main/LICENSE)
+[![License](https://img.shields.io/pypi/l/vertAX.svg)](https://github.com/vertAX/vertAX/raw/main/LICENSE)
 [![Python package index](https://img.shields.io/pypi/v/vertAX.svg)](https://pypi.org/project/vertAX)
 [![DOI](https://zenodo.org/badge/144513571.svg)](https://zenodo.org/badge/latestdoi/144513571)
-[![Development Status](https://img.shields.io/pypi/status/vertAX.svg)](https://en.wikipedia.org/wiki/Software_release_life_cycle#Beta) -->
 
-**A differentiable, JAX-powered vertex model framework for learning epithelial tissue mechanics.**
+<!-- [![Development Status](https://img.shields.io/pypi/status/vertAX.svg)](https://en.wikipedia.org/wiki/Software_release_life_cycle#Beta) -->
 
-[![Typing SVG](https://readme-typing-svg.herokuapp.com?font=Fira+Code&size=18&duration=2000&pause=1200&color=38C2FF&center=true&width=500&height=30&lines=Forward+simulation;+Parameter+inference;Inverse+mechanical+design)](https://gitlab.college-de-france.fr/virtualembryo/vertax)
+</div> 
 
-*— all in one unified Python package.*
 
-</div>
+<table border="0" cellspacing="0" cellpadding="0">
+<tr>
+<td width="40%" border="0">
+
+<img src="./figures/vertax_text.png" alt="VertAX" width="300">
+
+</td>
+<td width="60%" border="0">
+<b>
+A differentiable, JAX-powered vertex model framework<br> 
+for learning epithelial tissue mechanics.
+</b>
+<br><br>
+
+[![Typing SVG](https://readme-typing-svg.herokuapp.com?font=Fira+Code&size=18&duration=2000&pause=1200&color=38C2FF&center=false&width=295&height=30&lines=%5C+Forward+Simulations;%5C+Parameter+Inference;%5C+Inverse+Mechanical+Design)](https://gitlab.college-de-france.fr/virtualembryo/vertax) <br><b>— all in one unified Python package.</b>
+
+</td>
+</tr>
+</table>
+
 
 ---
 
@@ -77,6 +90,18 @@ VertAX handles **T1 neighbor exchanges** automatically: when an edge shortens be
 
 The mesh topology is encoded in three tables (`vertTable`, `heTable`, `faceTable`), separating geometry from connectivity for fast, JIT-friendly access. In bounded mode an additional `angTable` stores boundary arc angles.
 
+```
+vertTable  [n_v  × 2]:   (x, y) vertex coordinates
+
+heTable    [n_he × 8]:   prev | next | twin | source | target | face | offset_x | offset_y
+
+faceTable  [n_f  × 1]:   index of one half-edge belonging to each face
+
+angTable   [n_be × 1]:   arc angle per boundary edge  (bounded mode only)
+```
+
+Each edge is split into two **oppositely oriented** half-edges, enabling independent parametrization of the two cell membranes in contact. In periodic mode, half-edges crossing the box boundary carry offset flags `(-1, 0, +1)` to maintain topological continuity.
+
 ---
 
 ## Installation
@@ -135,7 +160,7 @@ plot_mesh(mesh)
 
 ---
 
-## Tutorial 1 — Inverse Modeling with Periodic Boundaries
+<!-- ## Tutorial 1 — Inverse Modeling with Periodic Boundaries
 
 This tutorial recovers edge tensions from a target equilibrium geometry.
 
@@ -342,7 +367,7 @@ for epoch in range(500):
 plot_mesh(mesh, title="Convergent extension result")
 ```
 
----
+--- -->
 
 ## Gradient Strategies
 
@@ -373,6 +398,29 @@ optimizer.bilevel_optimization_method = BilevelOptimizationMethod.SENSITIVITY
 # Equilibrium propagation
 optimizer.bilevel_optimization_method = BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION
 ```
+
+---
+
+## Tutorials
+
+See the [`docs/`](docs) folder for in-depth examples:
+
+| Notebook | Description |
+|---|---|
+| `inverse_modelling_example.ipynb` | Inverse modeling with periodic boundary conditions |
+| `inverse_modelling_example_bounded.ipynb` | Inverse design with bounded cluster (convergent extension) |
+
+---
+
+## Benchmarks
+
+On synthetic inverse problems (E₁, 20–60 cells), all three gradient strategies recover ground-truth shape factors with Pearson ρ > 0.98 after 350 epochs. 
+
+<p align="center">
+  <img src="./figures/benchmarks.png" alt="VertAX Benchmarks" width="500">
+</p>
+
+*Figure: VertAX benchmarks. **AD**: runtime scales linearly with # parameters; memory scales with inner loop depth. **ID**: constant memory; but runtime can be dominated by Hessian linear solve. **EP**: lowest memory footprint; runtime comparable to 2 inner passes; accuracy depends on perturbation size β.*
 
 ---
 
@@ -461,34 +509,6 @@ plot_mesh(
 
 ---
 
-## Data Structure
-
-VertAX uses a **half-edge** data structure separating geometry from topology:
-
-```
-vertTable  [n_v  × 2]:   (x, y) vertex coordinates
-
-heTable    [n_he × 8]:   prev | next | twin | source | target | face | offset_x | offset_y
-
-faceTable  [n_f  × 1]:   index of one half-edge belonging to each face
-
-angTable   [n_be × 1]:   arc angle per boundary edge  (bounded mode only)
-```
-
-Each edge is split into two **oppositely oriented** half-edges, enabling independent parametrization of the two cell membranes in contact. In periodic mode, half-edges crossing the box boundary carry offset flags `(-1, 0, +1)` to maintain topological continuity.
-
----
-
-## Benchmarks
-
-On synthetic inverse problems (E₁, 20–60 cells), all three gradient strategies recover ground-truth shape factors with Pearson ρ > 0.98 after 350 epochs. Runtime and memory scaling:
-
-- **AD**: runtime scales linearly with # parameters; memory scales with inner loop depth.
-- **ID**: constant memory; but runtime can be dominated by Hessian linear solve.
-- **EP**: lowest memory footprint; runtime comparable to 2–3 inner passes; accuracy depends on perturbation size β.
-
----
-
 ## Features Summary
 
 - ✅ Forward vertex modeling (periodic and bounded)
@@ -509,17 +529,6 @@ On synthetic inverse problems (E₁, 20–60 cells), all three gradient strategi
 - ✅ Save / load meshes (`.npz`)
 
 - ✅ Visualization with parameter coloring
-
----
-
-## Tutorials
-
-See the [`docs/`](docs) folder for in-depth examples:
-
-| Notebook | Description |
-|---|---|
-| `inverse_modelling_example.ipynb` | Inverse modeling with periodic boundary conditions |
-| `inverse_modelling_example_bounded.ipynb` | Inverse design with bounded cluster (convergent extension) |
 
 ---
 
