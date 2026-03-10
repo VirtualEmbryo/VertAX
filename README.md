@@ -507,7 +507,7 @@ plot_mesh(
 )
 ```
 
----
+<!-- ---
 
 ## Features Summary
 
@@ -528,7 +528,7 @@ plot_mesh(
 
 - ✅ Save / load meshes (`.npz`)
 
-- ✅ Visualization with parameter coloring
+- ✅ Visualization with parameter coloring -->
 
 ---
 
