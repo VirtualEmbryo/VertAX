@@ -58,7 +58,7 @@ Here, $X$ denotes the tissue configuration, i.e. the vertex positions of the mes
 In other words, VertAX repeatedly solves a mechanical equilibrium problem for a given parameter set $\theta$, then updates those parameters to better match data or a design objective.
 
 <p align="center">
-  <img src="figures/concept.png" alt="VertAX Concept" width="800"><br>
+  <img src="./figures/concept.png" alt="VertAX Concept" width="800"><br>
   <em>Figure: Bilevel optimization loop in VertAX.</em>
 </p>
 
@@ -137,7 +137,7 @@ VertAX supports two complementary simulation modes, designed for different class
     <td>Bulk tissue dynamics, no explicit boundaries</td>
     <td>Random Voronoi seeds or segmented images (Cellpose)</td>
     <td rowspan="2" align="center">
-      <img src="figures/periodic_bounded.png" alt="Periodic and bounded simulation modes in VertAX" width="220">
+      <img src="./figures/periodic_bounded.png" alt="Periodic and bounded simulation modes in VertAX" width="220">
     </td>
   </tr>
   <tr>
