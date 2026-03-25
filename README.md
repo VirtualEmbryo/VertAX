@@ -1,26 +1,24 @@
 <div align="left">
 
 <!-- Badges -->
-[![License](https://img.shields.io/pypi/l/vertAX.svg)](https://github.com/vertAX/vertAX/raw/main/LICENSE)
+[![License: CC BY-SA](https://img.shields.io/badge/License-CC%20BY--SA-lightgrey.svg)](https://creativecommons.org/licenses/by-sa/4.0/)
 [![Python package index](https://img.shields.io/pypi/v/vertAX.svg)](https://pypi.org/project/vertAX)
-[![DOI](https://zenodo.org/badge/144513571.svg)](https://zenodo.org/badge/latestdoi/144513571)
 
-<!-- [![Development Status](https://img.shields.io/pypi/status/vertAX.svg)](https://en.wikipedia.org/wiki/Software_release_life_cycle#Beta) -->
+<!-- [![DOI](https://zenodo.org/badge/144513571.svg)](https://zenodo.org/badge/latestdoi/144513571) -->
 
-</div> 
-
+</div>
 
 <table border="0" cellspacing="0" cellpadding="0">
 <tr>
 <td width="40%" border="0">
 
-<img src="./figures/vertax_text.png" alt="VertAX" width="300">
+<img src="figures/vertax_text.png" alt="VertAX" width="300">
 
 </td>
 <td width="60%" border="0">
 <b>
-A differentiable, JAX-powered vertex model framework<br> 
-for learning epithelial tissue mechanics.
+A differentiable JAX-based framework<br>
+for vertex modeling and inverse design of epithelial tissues.
 </b>
 <br><br>
 
@@ -30,89 +28,91 @@ for learning epithelial tissue mechanics.
 </tr>
 </table>
 
-
 ---
 
 ## What is VertAX?
 
-Epithelial tissues dynamically reshape through local mechanical interactions among cells. Understanding and *engineering* these forces is a central challenge in developmental biology and biophysics. **VertAX** provides the computational infrastructure to tackle this challenge.
+Epithelial tissues dynamically reshape through local mechanical interactions among cells. Understanding, inferring, and designing these mechanics is a central challenge in developmental biology and biophysics. **VertAX** is a computational framework built to address this challenge.
 
-VertAX represents tissues as two-dimensional **vertex models** — polygonal meshes where cells are faces, junctions are edges, and tricellular contacts are vertices. From this geometrically grounded representation, VertAX offers:
-
-- ⚡ **GPU-accelerated** simulation via JAX and JIT compilation
-- 🔁 **End-to-end differentiable** forward mechanics and inverse modeling
-- 🧩 **Bilevel optimization** framework for parameter inference and inverse design
-- 🔬 **Three gradient strategies**: Automatic Differentiation (AD), Implicit Differentiation (ID), and Equilibrium Propagation (EP)
-- 🎨 **Fully customizable** energy and cost functions as plain Python
-- 🔗 **Seamless ML integration** with JAX/Optax ecosystems
+**VertAX** is a **framework for vertex-based modeling**: it represents epithelial tissues as two-dimensional polygonal meshes in which cells are faces, junctions are edges, tricellular contacts are vertices, and mechanical equilibrium is defined by the minimum of a user-specified energy. Built on **JAX**, VertAX is designed not only for forward simulation, but also for inverse problems such as parameter inference and tissue design.
 
 ---
 
 ## Conceptual Overview
 
-VertAX frames inverse problems within a unified **bilevel optimization** paradigm:
+VertAX treats inverse modeling as a **bilevel optimization** problem:
 
 $$
 \begin{aligned}
-\textbf{Inner problem (physics):} \quad
-& X^{\ast}_{\theta} \in \arg\min_{X} E(X,\theta)
-&& \leftarrow \text{mechanical equilibrium}\\
 \textbf{Outer problem (learning):} \quad
-& \theta^{\ast} \in \arg\min_{\theta} C\left(X^{\ast}_{\theta}\right)
-&& \leftarrow \text{match data or design target}
+\theta^{\ast} &= \arg\min_{\theta} \mathcal{C}\left(X^{\ast}_{\theta},\theta\right)
+&& \leftarrow \text{fit data or reach a target} \\
+\textbf{Inner problem (physics):} \quad \text{s.t.}&\;\;
+X^{\ast}_{\theta} \in \arg\min_{X} \mathcal{E}(X,\theta)
+&& \leftarrow \text{compute mechanical equilibrium}
 \end{aligned}
 $$
 
-The inner problem finds the equilibrium configuration $X^*$ of a tissue for a fixed parameter set $\theta$ (tensions, shape factors, ...). The outer problem then adjusts $\theta$ to minimize a user-defined cost $C$ — such as mismatch to microscopy images or deviation from a desired morphology.
+Here, $X$ denotes the tissue configuration, i.e. the vertex positions of the mesh, and $\theta$ denotes the model parameters, such as line tensions, target areas, or shape factors.
+
+In other words, VertAX repeatedly solves a mechanical equilibrium problem for a given parameter set $\theta$, then updates those parameters to better match data or a design objective.
 
 <p align="center">
-  <img src="./figures/concept.png" alt="VertAX Concept" width="500">
+  <img src="figures/concept.png" alt="VertAX Concept" width="800"><br>
+  <em>Figure: Bilevel optimization loop in VertAX.</em>
 </p>
-
-*Figure: VertAX bilevel optimization loop. Inverse modeling tasks: force inference, mechanical design, patterning.*
 
 ---
 
-## Key Features
+## Core Features
 
-### 🏗️ Two simulation modes
+- 🧩 **Bilevel optimization framework**  
+  VertAX formulates inverse problems as nested optimization: an inner mechanical equilibrium problem and an outer parameter-learning problem.
 
-| Mode | Use case | Initialization |
-|---|---|---|
-| **Periodic** | Bulk tissue dynamics, no explicit boundaries | Random Voronoi seeds or segmented images (Cellpose) |
-| **Bounded** | Finite tissue clusters with curved interfaces | Random Voronoi seeds; boundary arcs as additional DOF |
+- 🔬 **Multiple gradient strategies**  
+  Supports **Automatic Differentiation (AD)**, **Implicit Differentiation (ID)**, and **Equilibrium Propagation (EP)**.
 
-### 🔀 T1 topological transitions
+- 🔁 **Differentiable and non-differentiable workflows**  
+  VertAX supports fully differentiable pipelines, while EP also enables inverse modeling with simulators that are only accessible through repeated executions.
 
-VertAX handles **T1 neighbor exchanges** automatically: when an edge shortens below a threshold, two candidate configurations are evaluated (flip vs. stretch) and the one with lower energy is accepted.
+- ⚡ **GPU acceleration with JAX**  
+  JIT compilation and vectorization enable efficient simulations on CPU and GPU.
 
-### 📐 Half-edge data structure
+- 🎨 **Custom energies and costs in plain Python**  
+  Define your own mechanical models and inverse-design objectives without changing the library internals.
 
-The mesh topology is encoded in three tables (`vertTable`, `heTable`, `faceTable`), separating geometry from connectivity for fast, JIT-friendly access. In bounded mode an additional `angTable` stores boundary arc angles.
+- 🏗️ **Two simulation modes**  
+  Supports both periodic tissues (bulk mechanics) and bounded tissues (finite clusters with curved interfaces).
 
-```
-vertTable  [n_v  × 2]:   (x, y) vertex coordinates
+- 🔀 **Automatic topology changes**  
+  Handles T1 neighbor exchanges during optimization.
 
-heTable    [n_he × 8]:   prev | next | twin | source | target | face | offset_x | offset_y
+- 🔗 **Seamless ML integration**  
+  Designed to work naturally with the JAX/Optax ecosystem.
 
-faceTable  [n_f  × 1]:   index of one half-edge belonging to each face
-
-angTable   [n_be × 1]:   arc angle per boundary edge  (bounded mode only)
-```
-
-Each edge is split into two **oppositely oriented** half-edges, enabling independent parametrization of the two cell membranes in contact. In periodic mode, half-edges crossing the box boundary carry offset flags `(-1, 0, +1)` to maintain topological continuity.
 
 ---
 
 ## Installation
 
-We recommend installing into a virtual environment:
+We recommend installing VertAX in a virtual environment:
 
 ```sh
 python -m venv .venv
 source .venv/bin/activate
-pip install "vertax"
 ```
+
+### From source
+```
+git clone https://github.com/VirtualEmbryo/VertAX.git
+cd vertax
+pip install -e .
+```
+### From PyPI
+```
+Coming soon.
+```
+
 
 **Dependencies**: JAX, Optax, SciPy (for Voronoi initialization), Matplotlib (for plotting).
 
@@ -120,13 +120,41 @@ For GPU support, install JAX with CUDA as described in the [JAX docs](https://gi
 
 ---
 
+## Simulation modes
+
+VertAX supports two complementary simulation modes, designed for different classes of epithelial mechanics problems. The **periodic** mode is best suited for bulk tissue dynamics without explicit external boundaries, while the **bounded** mode is designed for finite tissue clusters with curved free interfaces. Both modes share the same vertex-based formulation and optimization framework, but differ in how boundaries are represented and initialized.
+
+
+<table>
+  <tr>
+    <th>Mode</th>
+    <th>Use case</th>
+    <th>Initialization</th>
+    <th>Illustration</th>
+  </tr>
+  <tr>
+    <td><b>Periodic</b></td>
+    <td>Bulk tissue dynamics, no explicit boundaries</td>
+    <td>Random Voronoi seeds or segmented images (Cellpose)</td>
+    <td rowspan="2" align="center">
+      <img src="figures/periodic_bounded.png" alt="Periodic and bounded simulation modes in VertAX" width="220">
+    </td>
+  </tr>
+  <tr>
+    <td><b>Bounded</b></td>
+    <td>Finite tissue clusters with curved interfaces</td>
+    <td>Random Voronoi seeds; boundary arcs as additional degrees of freedom (DOFs)</td>
+  </tr>
+</table>
+
+---
+
 ## Quick Start — Forward Modeling
 
-The simplest usage: create a periodic tissue mesh, define an energy, minimize.
+The simplest usage is to create a periodic tissue mesh, define an energy, and minimize it.
 
 ```python
 import jax.numpy as jnp
-from jax import Array
 
 from vertax import PbcBilevelOptimizer, PbcMesh, plot_mesh
 from vertax.energy import energy_shape_factor_homo
@@ -134,19 +162,28 @@ from vertax.energy import energy_shape_factor_homo
 # --- Mesh setup ---
 n_cells = 100
 L_box = jnp.sqrt(n_cells)
+
 mesh = PbcMesh.periodic_voronoi_from_random_seeds(
-    nb_seeds=n_cells, width=float(L_box), height=float(L_box), random_key=1
+    nb_seeds=n_cells,
+    width=float(L_box),
+    height=float(L_box),
+    random_key=1,
 )
 
-# --- Attach parameters (tensions, target areas, shape factors) ---
+# --- Attach parameters ---
 mesh.vertices_params = jnp.asarray([0.0])
 mesh.edges_params    = jnp.asarray([0.0])
 mesh.faces_params    = jnp.asarray([3.7])   # uniform target shape factor
 
-# --- Define energy (wrapping the built-in shape-factor energy) ---
+# --- Define energy ---
 def energy(vertTable, heTable, faceTable, _vert_params, _he_params, face_params):
     return energy_shape_factor_homo(
-        vertTable, heTable, faceTable, float(L_box), float(L_box), face_params
+        vertTable,
+        heTable,
+        faceTable,
+        float(L_box),
+        float(L_box),
+        face_params,
     )
 
 # --- Minimize and visualize ---
@@ -160,18 +197,21 @@ plot_mesh(mesh)
 
 ---
 
-<!-- ## Tutorial 1 — Inverse Modeling with Periodic Boundaries
+## Quick Start — Inverse Modeling
 
-This tutorial recovers edge tensions from a target equilibrium geometry.
-
-### Step 1 — Create and parametrize the mesh
+VertAX can also optimize model parameters to match a target geometry.
 
 ```python
 import math
 import jax
 import jax.numpy as jnp
-from vertax import PbcMesh, plot_mesh
+import optax
 
+from vertax import PbcBilevelOptimizer, PbcMesh, BilevelOptimizationMethod, plot_mesh
+from vertax.cost import cost_v2v
+from vertax.energy import energy_shape_factor_hetero
+
+# --- Mesh setup ---
 n_cells = 20
 width = height = math.sqrt(n_cells)
 
@@ -179,195 +219,73 @@ mesh = PbcMesh.periodic_voronoi_from_random_seeds(
     nb_seeds=n_cells, width=width, height=height, random_key=0
 )
 
-# Random edge tensions drawn from a Gaussian
-key = jax.random.PRNGKey(1)
-he_params = 1.2 + 0.1 * jax.random.normal(key, shape=(mesh.nb_edges,))
-mesh.edges_params    = jnp.repeat(he_params, 2)   # twin half-edges share tension
-mesh.faces_params    = jnp.ones(mesh.nb_faces)     # target area = 1
+# --- Attach parameters ---
 mesh.vertices_params = jnp.zeros(mesh.nb_vertices)
+mesh.edges_params    = jnp.zeros(mesh.nb_half_edges)   # not used here
+mesh.faces_params    = jnp.full(mesh.nb_faces, 3.7)    # initial target shape factors
 
-plot_mesh(mesh, title="Initial mesh")
-```
+selected_faces = jnp.arange(mesh.nb_faces)
 
-### Step 2 — Define a custom energy function
+# --- Built-in energy function ---
+def energy(vertTable, heTable, faceTable, _vert_params, _he_params, face_params):
+    return energy_shape_factor_hetero(
+        vertTable, heTable, faceTable,
+        width, height,
+        selected_faces,
+        face_params,
+    )
 
-```python
-from jax import Array, vmap
-from vertax.geo import get_area, get_length
-
-MAX_EDGES_IN_FACE = 20
-
-def get_energy_function(reference_tension: float):
-
-    def area_part(face, face_param, vertTable, heTable, faceTable):
-        a = get_area(face, vertTable, heTable, faceTable, width, height, MAX_EDGES_IN_FACE)
-        return (a - face_param) ** 2
-
-    def hedge_part(he, he_param, vertTable, heTable, faceTable):
-        return he_param * get_length(he, vertTable, heTable, faceTable, width, height)
-
-    def energy_fct(vertTable, heTable, faceTable, _vert_params, he_params, face_params):
-        K_areas = 20
-        areas  = vmap(lambda f, fp: area_part(f, fp, vertTable, heTable, faceTable))(
-                     jnp.arange(len(faceTable)), face_params)
-        hedges = vmap(lambda h, hp: hedge_part(h, hp, vertTable, heTable, faceTable))(
-                     jnp.arange(2, len(heTable)), he_params[2:])
-        return (2 * reference_tension * get_length(0, vertTable, heTable, faceTable, width, height)
-                + jnp.sum(hedges) + 0.5 * K_areas * jnp.sum(areas))
-
-    return energy_fct
-
-energy = get_energy_function(float(he_params[0]))
-```
-
-### Step 3 — Inner optimization (find equilibrium)
-
-```python
-import optax
-from vertax import PbcBilevelOptimizer
-
+# --- Optimizer setup ---
 optimizer = PbcBilevelOptimizer()
-optimizer.loss_function_inner   = energy
-optimizer.inner_solver          = optax.sgd(learning_rate=0.01)
-optimizer.update_T1             = True
-optimizer.min_dist_T1           = 0.005
-optimizer.max_nb_iterations     = 1000
-optimizer.tolerance             = 1e-4
-optimizer.patience              = 5
+optimizer.loss_function_inner = energy
+optimizer.inner_solver = optax.sgd(learning_rate=0.01)
+optimizer.update_T1 = True
+optimizer.min_dist_T1 = 0.005
 
+# --- Relax the initial mesh ---
 optimizer.inner_optimization(mesh)
-plot_mesh(mesh, title="Mesh after inner optimization")
-```
 
-### Step 4 — Build the target and run bilevel optimization
-
-```python
-from vertax.cost import cost_v2v
-from vertax import BilevelOptimizationMethod
-
-# Create a target mesh with different tensions
+# --- Create a target mesh with different face parameters ---
 target = PbcMesh.copy_mesh(mesh)
-key2   = jax.random.PRNGKey(2)
-he_params_target   = 1.2 + 0.1 * jax.random.normal(key2, shape=(target.nb_edges,))
-target.edges_params = jnp.repeat(he_params_target, 2)
 
-energy_target = get_energy_function(float(he_params_target[0]))
+key = jax.random.PRNGKey(1)
+target.faces_params = 3.7 + 0.2 * jax.random.normal(key, shape=(target.nb_faces,))
+target.vertices_params = jnp.zeros(target.nb_vertices)
+target.edges_params    = jnp.zeros(target.nb_half_edges)
+
 optimizer.inner_optimization(target)
 
-# Register the target
-optimizer.vertices_target       = target.vertices.copy()
-optimizer.edges_target          = target.edges.copy()
-optimizer.faces_target          = target.faces.copy()
-optimizer.loss_function_inner   = energy_target
-optimizer.loss_function_outer   = cost_v2v
-optimizer.outer_solver          = optax.adam(learning_rate=1e-4, nesterov=True)
+# --- Register the target ---
+optimizer.vertices_target = target.vertices.copy()
+optimizer.edges_target    = target.edges.copy()
+optimizer.faces_target    = target.faces.copy()
+
+# --- Outer loss and bilevel method ---
+optimizer.loss_function_outer = cost_v2v
+optimizer.outer_solver = optax.adam(learning_rate=1e-4, nesterov=True)
 optimizer.bilevel_optimization_method = BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION
 
-# Run bilevel optimization
-for epoch in range(100):
+# --- Run bilevel optimization ---
+for epoch in range(20):
     optimizer.bilevel_optimization(mesh)
+
+plot_mesh(mesh, title="Recovered mesh after inverse modeling")
 ```
 
-### Step 5 — Visualize results
-
-```python
-from vertax import EdgePlot, FacePlot, VertexPlot
-
-plot_mesh(
-    mesh,
-    edge_plot=EdgePlot.EDGE_PARAMETER,   edge_parameters_name="tension",
-    face_plot=FacePlot.FACE_PARAMETER,   face_parameters_name="area",
-    vertex_plot=VertexPlot.INVISIBLE,
-    title="Inferred tensions and areas"
-)
-```
+For full inverse-modeling examples, see [Tutorials](#tutorials) section..
 
 ---
 
-## Tutorial 2 — Inverse Design with Bounded Boundaries
+## Tutorials
 
-This tutorial uses a **bounded** tissue cluster and optimizes line tensions to achieve a prescribed elongation ratio (convergent extension).
+See the [`docs/`](docs) folder for in-depth examples:
 
-### Setup
+| Notebook | Description |
+|---|---|
+| `inverse_modelling_example.ipynb` | Inverse modeling with periodic boundary conditions |
+| `inverse_modelling_example_bounded.ipynb` | Inverse design with bounded cluster (convergent extension) |
 
-```python
-from vertax import BoundedBilevelOptimizer, BoundedMesh, plot_mesh
-import jax, jax.numpy as jnp, math, optax
-
-n_cells = 20
-width = height = math.sqrt(n_cells)
-
-mesh = BoundedMesh.from_random_seeds(
-    nb_seeds=n_cells, width=width, height=height, random_key=2
-)
-
-key = jax.random.PRNGKey(3)
-mesh.edges_params    = 1 + jax.nn.sigmoid(jax.random.uniform(key, (mesh.nb_edges,)) * 20 - 10)
-mesh.faces_params    = jnp.full(mesh.nb_faces, 0.6)   # target area = 0.6
-mesh.vertices_params = jnp.zeros(mesh.nb_vertices)
-```
-
-### Custom energy for bounded meshes
-
-```python
-from jax import Array, vmap
-from vertax.geo import get_area_bounded, get_edge_length, get_surface_length
-
-def get_energy_function():
-
-    def energy_fct(vertTable, angTable, heTable, faceTable,
-                   _sel_v, _sel_he, _sel_f, _vert_params, he_params, face_params):
-        vertTable = jnp.vstack([jnp.array([[0.,0.],[1.,1.]]), vertTable])
-        num_edges = angTable.size
-        angTable  = jnp.repeat(angTable, 2)
-        he_params = jax.nn.sigmoid(he_params) + 1     # keep tensions positive
-
-        K_areas = 20
-        areas = jnp.sum(vmap(
-            lambda f, fp: (get_area_bounded(f, vertTable, angTable, heTable, faceTable) - fp) ** 2
-        )(jnp.arange(len(faceTable)), face_params))
-
-        edges = jnp.arange(num_edges * 2)
-        surf  = jnp.sum(vmap(
-            lambda e, t: get_surface_length(e, vertTable, angTable, heTable) * t
-        )(edges, jnp.repeat(he_params, 2)))
-
-        unique = jnp.arange(num_edges) * 2
-        inner = jnp.sum(vmap(
-            lambda e, t: get_edge_length(e, vertTable, heTable) * t
-        )(unique, he_params))
-
-        return K_areas * areas + inner + surf
-
-    return energy_fct
-```
-
-### Bilevel optimization toward convergent extension
-
-```python
-from vertax.cost import cost_ratio   # minimizes (a₁/a₂ − 2)²
-from vertax import BilevelOptimizationMethod
-
-optimizer = BoundedBilevelOptimizer()
-optimizer.loss_function_inner         = get_energy_function()
-optimizer.loss_function_outer         = cost_ratio   # drive the cluster to 2:1 aspect ratio
-optimizer.bilevel_optimization_method = BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION
-optimizer.outer_solver                = optax.adam(learning_rate=1e-4, nesterov=True)
-
-# Reach initial equilibrium
-optimizer.inner_optimization(mesh)
-
-# Optimize tensions to achieve elongation
-for epoch in range(500):
-    cost = cost_ratio(mesh.vertices)
-    optimizer.bilevel_optimization(mesh)
-    if epoch % 50 == 0:
-        print(f"epoch {epoch}: cost = {cost:.4f}")
-
-plot_mesh(mesh, title="Convergent extension result")
-```
-
---- -->
+---
 
 ## Gradient Strategies
 
@@ -379,7 +297,7 @@ VertAX implements and benchmarks three complementary methods for computing outer
 | **ID** (Implicit Diff.) | Differentiates the optimality condition ∇ₓE=0 via Implicit Function Theorem; JVP or adjoint (VJP) variant | No unrolling; constant memory; exact near equilibrium | Requires Hessian solve; sensitive to ill-conditioning |
 | **EP** (Equilibrium Prop.) | Estimates gradient from perturbed free and nudged equilibria; no backprop required | Memory-efficient; works with non-differentiable/incomplete solvers | Approximate; depends on perturbation size β |
 
-**In practice**: AD and EP converge similarly (Pearson ρ > 0.9 after ~200 epochs on synthetic benchmarks), while EP is especially valuable for non-differentiable simulators — including C++ or discrete-update solvers — since it only requires two forward passes.
+**In practice**: AD and EP often recover similar parameter trends on synthetic inverse problems, while EP is especially attractive for simulators that cannot be made fully differentiable.
 
 Selecting the method:
 
@@ -401,28 +319,29 @@ optimizer.bilevel_optimization_method = BilevelOptimizationMethod.EQUILIBRIUM_PR
 
 ---
 
-## Tutorials
+## Advanced concepts
 
-See the [`docs/`](docs) folder for in-depth examples:
+### 📐 Half-edge data structure
 
-| Notebook | Description |
-|---|---|
-| `inverse_modelling_example.ipynb` | Inverse modeling with periodic boundary conditions |
-| `inverse_modelling_example_bounded.ipynb` | Inverse design with bounded cluster (convergent extension) |
+Mesh topology in VertAX is encoded through three core tables — `vertTable`, `heTable`, and `faceTable` — which separate geometry from connectivity and enable fast, JIT-friendly computations. In bounded mode, an additional `angTable` stores the curvature of boundary arcs.
 
----
+```text
+vertTable  [n_v  × 2] :  (x, y) coordinates of vertices
 
-## Benchmarks
+heTable    [n_he × 8] :  prev | next | twin | source | target | face | offset_x | offset_y
 
-On synthetic inverse problems (E₁, 20–60 cells), all three gradient strategies recover ground-truth shape factors with Pearson ρ > 0.98 after 350 epochs. 
+faceTable  [n_f  × 1] :  index of one half-edge belonging to each face
 
-<p align="center">
-  <img src="./figures/benchmarks.png" alt="VertAX Benchmarks" width="500">
-</p>
+angTable   [n_be × 1] :  arc angle for each boundary edge  (bounded mode only)
+```
 
-*Figure: VertAX benchmarks. **AD**: runtime scales linearly with # parameters; memory scales with inner loop depth. **ID**: constant memory; but runtime can be dominated by Hessian linear solve. **EP**: lowest memory footprint; runtime comparable to 2 inner passes; accuracy depends on perturbation size β.*
+Each edge is represented by two oppositely oriented half-edges, which makes local topology updates straightforward and allows oriented edge-based quantities to be handled naturally. In periodic mode, half-edges crossing the simulation box carry offset flags `(-1, 0, +1)` that specify the periodic image of their target vertex and ensure topological continuity across boundaries.
 
----
+### 🔀 T1 topological transitions
+
+VertAX handles **T1 neighbor exchanges** automatically: when an edge shortens below a prescribed threshold, two candidate updates are considered: either the edge is stretched along its current direction, or it is replaced by a new edge perpendicular to it (a T1 transition). The configuration with lower energy is then accepted.
+
+--- 
 
 ## API Reference
 
@@ -506,49 +425,26 @@ plot_mesh(
     title="My mesh"
 )
 ```
-
-<!-- ---
-
-## Features Summary
-
-- ✅ Forward vertex modeling (periodic and bounded)
-
-- ✅ Inverse vertex modeling via :
-    - ⚙️ Automatic differentiation (AD, forward-mode `jacfwd`)
-    - ⚙️ Implicit differentiation (adjoint-state VJP and sensitivity JVP)
-    - ⚙️ Equilibrium propagation (first-order and second-order centered estimators)
-
-- ✅ Custom energy and cost functions in plain Python
-
-- ✅ Periodic boundary conditions from random seeds or real images
-
-- ✅ Bounded boundary conditions from random seeds
-
-- ✅ T1 topological transitions
-
-- ✅ Save / load meshes (`.npz`)
-
-- ✅ Visualization with parameter coloring -->
-
----
+--- 
 
 ## Citing VertAX
 
 If you use VertAX in your research, please cite:
 
-> Pasqui A., Catacora Ocana J.M., Sinha A., Delbary F., Perez M., Gosti G., Miotto M., Caudo D., Ruocco G., Ernoult M.\*, Turlier H.\* (2025). *VertAX: A Differentiable Vertex Model for Learning Epithelial Tissue Mechanics.*
+> Pasqui A., Catacora Ocana J.M., Sinha A., Perez M., Delbary F., Gosti G., Miotto M., Caudo D., Ruocco G., Ernoult M.\*, Turlier H.\* (2025). *VertAX: A Differentiable Vertex Model for Learning Epithelial Tissue Mechanics.*
 
-<!-- Repository DOI:
-> vertAX contributors (2019). vertAX: a differentiable vertex model framework. [doi:10.5281/zenodo.3555620](https://zenodo.org/record/3555620) -->
+If a DOI or preprint becomes available, we also recommend citing that version.
 
 ---
 
 ## Funding
 
-This project received funding from the European Union's Horizon 2020 research and innovation programme under the **European Research Council** grant agreement no. 949267, and under the **Marie Skłodowska-Curie** grant agreement No. 945304 – Cofund AI4theSciences, hosted by PSL University.
+This project received funding from the European Union’s Horizon 2020 research and innovation programme under the **European Research Council** (ERC) grant agreement no. **949267**, and under the **Marie Skłodowska-Curie** grant agreement no. **945304** — Cofund **AI4theSciences**, hosted by **PSL University**. AP, JMCO, AS, FB, MP, FD and HT acknowledge support from CNRS and Collège de France
 
 ---
 
 ## License
 
-VertAX is released under the license specified in [`LICENSE`](LICENSE). It is free and open-source software.
+VertAX is distributed under the **Creative Commons Attribution–ShareAlike 4.0 International (CC BY-SA 4.0)** [`license`](LICENSE).
+
+You are free to share and adapt the material, provided that appropriate credit is given and that any derivative work is distributed under the same license.
