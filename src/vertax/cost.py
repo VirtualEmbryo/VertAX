@@ -412,3 +412,111 @@ def cost_checkerboard(
 
     n_edges = heTable.shape[0] // 2
     return fori_loop(0, n_edges, body_fun, 0.0)
+
+
+@partial(jit, static_argnums=(3, 4))
+def cost_tem_halfedge(
+    vertTable,
+    heTable,
+    faceTable,
+    width,
+    height,
+    vertTable_target,
+    heTable_target,
+    faceTable_target,
+    selected_verts=None,
+    selected_hes=None,
+    selected_faces=None,
+    image_target=None,
+):
+    """
+    TEM-inspired loss using half-edge dual graph (cells).
+    """
+
+    # ---------- helpers ----------
+    def pairwise_periodic_distances(x, y):
+        dx = x[:, None, 0] - y[None, :, 0]
+        dy = x[:, None, 1] - y[None, :, 1]
+
+        dx = jnp.minimum(jnp.abs(dx), width - jnp.abs(dx))
+        dy = jnp.minimum(jnp.abs(dy), height - jnp.abs(dy))
+
+        return jnp.sqrt(dx**2 + dy**2 + 1e-12)
+
+    def sinkhorn(a, b, C, eps=5e-2, n_iters=50):
+        K = jnp.exp(-C / eps)
+        u = jnp.ones_like(a)
+        v = jnp.ones_like(b)
+
+        def body(_, state):
+            u, v = state
+            u = a / (K @ v + 1e-12)
+            v = b / (K.T @ u + 1e-12)
+            return (u, v)
+
+        u, v = fori_loop(0, n_iters, body, (u, v))
+        return jnp.outer(u, v) * K
+
+    # ---------- dual graph ----------
+    def build_dual_adj(heTable, n_faces):
+        face = heTable[:, 5].astype(jnp.int32)
+        twin = heTable[:, 2].astype(jnp.int32)
+
+        face_twin = face[twin]
+
+        valid = face != face_twin
+        keep = valid & (face < face_twin)
+
+        weight = keep.astype(jnp.float32)
+
+        A = jnp.zeros((n_faces, n_faces))
+
+        A = A.at[face, face_twin].add(weight)
+        A = A.at[face_twin, face].add(weight)
+
+        return A
+
+    def structure_matrix(A):
+        A2 = A @ A
+        return 2.0 - A - 0.5 * A2
+
+    # ---------- centroids ----------
+    # faceTable stores a half-edge index → get its source vertex
+    he_idx = faceTable[:, 0].astype(jnp.int32)
+
+    X = vertTable[heTable[he_idx, 3].astype(jnp.int32), :2]
+    Y = vertTable_target[heTable_target[faceTable_target[:, 0].astype(jnp.int32), 3].astype(jnp.int32), :2]
+
+    N = X.shape[0]
+    M = Y.shape[0]
+
+    a = jnp.ones(N) / N
+    b = jnp.ones(M) / M
+
+    # ---------- costs ----------
+    C_geom = pairwise_periodic_distances(X, Y)
+
+    A1 = build_dual_adj(heTable, N)
+    A2 = build_dual_adj(heTable_target, M)
+
+    S1 = structure_matrix(A1)
+    S2 = structure_matrix(A2)
+
+    # structure comparison (non-periodic, abstract space)
+    diff = S1[:, None, :] - S2[None, :, :]
+    C_struct = jnp.sqrt(jnp.sum(diff**2, axis=-1) + 1e-12)
+
+    alpha = 0.5
+    C_total = alpha * C_geom + (1.0 - alpha) * C_struct
+
+    gamma = sinkhorn(a, b, C_total)
+
+    return jnp.sum(gamma * C_total)
+
+
+@partial(jit, static_argnums=(3, 4))
+def cost_v2v_tem(vertTable, heTable, faceTable, width, height, vertTable_target, heTable_target, faceTable_target, selected_verts=None, selected_hes=None, selected_faces=None, image_target=None):
+    return (
+        0.99 * cost_v2v(vertTable, heTable, faceTable, width, height, vertTable_target, heTable_target, faceTable_target, selected_verts=None, selected_hes=None, selected_faces=None, image_target=None)
+        + 0.01 * cost_tem_halfedge(vertTable, heTable, faceTable, width, height, vertTable_target, heTable_target, faceTable_target, selected_verts=None, selected_hes=None, selected_faces=None, image_target=None)
+    )
