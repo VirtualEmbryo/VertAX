@@ -10,6 +10,7 @@ from jax.numpy import sinc as npsinc
 from jax.numpy.fft import ifft2
 
 from vertax.geo import get_area
+from scipy.optimize import linear_sum_assignment
 
 TARGET_RATIO = 2.0
 
@@ -415,6 +416,248 @@ def cost_checkerboard(
 
 
 @partial(jit, static_argnums=(3, 4))
+def cost_IAS(vertTable, 
+                heTable, 
+                faceTable,
+                width,
+                height,
+                vertTable_target, 
+                heTable_target, 
+                faceTable_target,
+                selected_verts=None, 
+                selected_hes=None, 
+                selected_faces=None, 
+                image_target=None):
+    """
+    Differentiable IAS.
+    C_{IAS}(i,j)   = \sqrt{\sum_{k=1}^{N} (S_1(i,k) - S_2(j,k))^2}
+    """
+
+    L_box = jnp.sqrt(len(faceTable))
+
+    def l2(x, y):
+        diff = x[:, None, :] - y[None, :, :]
+        return jnp.sqrt(jnp.sum(diff**2, axis=-1) + 1e-12)
+
+    def mse(x, y):
+        diff = x[:, None, :] - y[None, :, :]
+        return jnp.sum(diff**2, axis=-1) + 1e-12
+
+    def sinkhorn(a, b, C, eps=5e-2, n_iters=50):
+        K = jnp.exp(-C / eps)
+        u = jnp.ones_like(a)
+        v = jnp.ones_like(b)
+
+        def body(_, state):
+            u, v = state
+            u = a / (K @ v + 1e-12)
+            v = b / (K.T @ u + 1e-12)
+            return (u, v)
+
+        u, v = fori_loop(0, n_iters, body, (u, v))
+        return jnp.outer(u, v) * K
+
+    # dual graph from half-edges
+    def build_dual_adj(heTable, n_faces):
+        face = heTable[:, 5]
+        twin = heTable[:, 2]
+
+        face_twin = face[twin]
+
+        # mask: 1.0 for valid edges, 0.0 for boundary/self
+        mask = (face != face_twin).astype(jnp.float32)
+
+        A = jnp.zeros((n_faces, n_faces))
+
+        # scatter with mask weighting (no boolean indexing)
+        A = A.at[face, face_twin].add(mask)
+        A = A.at[face_twin, face].add(mask)
+
+        # binarize (avoid double counts)
+        A = jnp.clip(A, 0.0, 1.0)
+
+        return A
+
+    # structure metric (1-hop + 2-hop)
+    def structure_matrix(A):
+        A2 = A @ A
+        # normalize to avoid scaling issues
+        return 2.0 - A - 0.5 * A2
+    
+    def get_face_vertices(he_start, heTable, vertTable, max_edges=20):
+        """
+        Collect vertices of one face using half-edge traversal.
+        Returns fixed-size array (max_edges, 2) + mask
+        """
+
+        verts = jnp.zeros((max_edges, 2))
+        mask = jnp.zeros((max_edges,))
+        offset = jnp.array([0, 0])
+
+        def body_fun(i, state):
+            he, verts, mask, offset = state
+
+            source = heTable[he, 3].astype(jnp.int32)
+            off = heTable[he, 6:8]
+
+            pos = vertTable[source] + offset * L_box #jnp.array([width, height])
+
+            verts = verts.at[i].set(pos)
+            mask = mask.at[i].set(1.0)
+
+            offset += off
+            he_next = heTable[he, 1].astype(jnp.int32)
+
+            return (he_next, verts, mask, offset)
+
+        he_final, verts, mask, offset = fori_loop(
+            0, max_edges, body_fun, (he_start, verts, mask, offset)
+        )
+
+        return verts, mask
+    
+    def polygon_centroid(verts, mask):
+        """
+        Compute centroid from masked polygon vertices
+        """
+
+        # shift for edges
+        v = verts
+        v_next = jnp.roll(v, -1, axis=0)
+
+        cross = v[:, 0] * v_next[:, 1] - v_next[:, 0] * v[:, 1]
+        cross = cross * mask
+
+        area = jnp.sum(cross) / 2.0 + 1e-12
+
+        cx = jnp.sum((v[:, 0] + v_next[:, 0]) * cross) / (6 * area)
+        cy = jnp.sum((v[:, 1] + v_next[:, 1]) * cross) / (6 * area)
+
+        return jnp.array([cx, cy])
+    
+    def compute_face_centroids(faceTable, heTable, vertTable):
+        """
+        Compute centroids for all faces
+        """
+
+        he_start = faceTable[:, 0].astype(jnp.int32)
+
+        def single_face(he):
+            verts, mask = get_face_vertices(he, heTable, vertTable)
+            return polygon_centroid(verts, mask)
+
+        return vmap(single_face)(he_start)
+
+
+    alpha=0.0
+    """ATTENTION !!!!!!!!!!!!"""
+
+    # face centroids
+    X = compute_face_centroids(faceTable, heTable, vertTable)
+    Y = compute_face_centroids(faceTable_target, heTable_target, vertTable_target)
+
+    N = X.shape[0]
+    M = Y.shape[0]
+
+    # uniform weights
+    a = jnp.ones(N) / N
+    b = jnp.ones(M) / M
+
+    # geometry cost
+    C_geom = l2(X, Y)
+
+    # structure cost
+    A1 = build_dual_adj(heTable, N)
+    A2 = build_dual_adj(heTable_target, M)
+
+    S1 = structure_matrix(A1)
+    S2 = structure_matrix(A2)
+
+    # project structure into pairwise node cost
+    # (cheap approximation of tem)
+    C_l2 = l2(S1, S2)
+    C_mse = mse(S1, S2)
+
+    # combined cost
+    C_total = alpha * C_geom + (1.0 - alpha) * C_mse
+
+    # transport
+    gamma = sinkhorn(a, b, C_total)
+
+    # final loss
+    loss = jnp.sum(gamma * C_total)
+
+    return loss
+
+
+def cost_d_IAS(vertTable, 
+                heTable, 
+                faceTable,
+                width,
+                height,
+                vertTable_target, 
+                heTable_target, 
+                faceTable_target,
+                selected_verts=None, 
+                selected_hes=None, 
+                selected_faces=None, 
+                image_target=None):
+    """
+    d-IAS :- Counts mismatched edges.
+    C_{d-IAS}(i,j) = \sum_{k=1}^{N} |A_1(i,k) - A_2(j,k)|
+    """
+
+    def build_dual_adj_np(heTable, n_faces):
+        face = heTable[:, 5]
+        twin = heTable[:, 2]
+
+        face_twin = face[twin]
+        mask = (face != face_twin).astype(float)
+
+        A = np.zeros((n_faces, n_faces))
+
+        A[face, face_twin] += mask
+        A[face_twin, face] += mask
+
+        A = np.clip(A, 0.0, 1.0)
+        return A
+
+    n1 = len(faceTable)
+    n2 = len(faceTable_target)
+
+    if n1 != n2:
+        raise ValueError("This version requires same number of faces")
+
+    n = n1
+
+    A1 = build_dual_adj_np(heTable, n)
+    A2 = build_dual_adj_np(heTable_target, n)
+
+    # --- Step 1: node matching via Hungarian ---
+    # cost between nodes = L1 difference of adjacency rows
+    C = np.sum(np.abs(A1[:, None, :] - A2[None, :, :]), axis=-1)
+
+    row_ind, col_ind = linear_sum_assignment(C)
+
+    # permutation: face i in A1 ↔ face col_ind[i] in A2
+    P = np.zeros((n, n))
+    P[row_ind, col_ind] = 1.0
+
+    # --- Step 2: permute A2 ---
+    A2_perm = P @ A2 @ P.T
+
+    # --- Step 3: count edge mismatches ---
+    diff = np.abs(A1 - A2_perm)
+
+    # count each edge once
+    diff_upper = np.triu(diff, k=1)
+
+    loss = int(np.sum(diff_upper))
+
+    return loss
+
+
+@partial(jit, static_argnums=(3, 4))
 def cost_tem_halfedge(
     vertTable,
     heTable,
@@ -520,3 +763,8 @@ def cost_v2v_tem(vertTable, heTable, faceTable, width, height, vertTable_target,
         0.99 * cost_v2v(vertTable, heTable, faceTable, width, height, vertTable_target, heTable_target, faceTable_target, selected_verts=None, selected_hes=None, selected_faces=None, image_target=None)
         + 0.01 * cost_tem_halfedge(vertTable, heTable, faceTable, width, height, vertTable_target, heTable_target, faceTable_target, selected_verts=None, selected_hes=None, selected_faces=None, image_target=None)
     )
+
+@partial(jit, static_argnums=(3, 4))
+def cost_v2v_ias(vertTable, heTable, faceTable, width, height, vertTable_target, heTable_target, faceTable_target, selected_verts, selected_hes, selected_faces, image_target):
+    return 0.5*cost_v2v(vertTable, heTable, faceTable, width, height, vertTable_target, heTable_target, faceTable_target, selected_verts=None, selected_hes=None, selected_faces=None, image_target=None) \
+            +0.5*cost_IAS(vertTable, heTable, faceTable, width, height, vertTable_target, heTable_target, faceTable_target, selected_verts=None, selected_hes=None, selected_faces=None, image_target=None)
