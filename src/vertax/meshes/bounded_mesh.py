@@ -226,6 +226,11 @@ class BoundedMesh(Mesh):
         return jax.vmap(_get_area)(face_id)
 
     @classmethod
+    def create_empty(cls) -> Self:
+        """Return an empty mesh."""
+        return cls._create()
+
+    @classmethod
     def from_random_seeds(cls, nb_seeds: int, width: float, height: float, random_key: int, nb_fates: int = 2) -> Self:
         """Create a bounded Mesh from random seeds.
 
