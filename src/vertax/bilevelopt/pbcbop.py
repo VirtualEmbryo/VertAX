@@ -19,10 +19,13 @@ __all__ = ["PbcBilevelOptimizer"]
 
 
 class PbcBilevelOptimizer(_BilevelOptimizer):
-    """Bi-level optimizer for periodic boundary condition meshes."""
+    """Bi-level optimizer for periodic boundary condition meshes (`PbcMesh`)."""
 
     def __init__(self) -> None:
-        """Create a Bi-level optimizer for periodic boundary condition meshes with default parameters."""
+        """Create a Bi-level optimizer for periodic boundary condition meshes with default parameters.
+
+        Does not specify the inner and outer loss yet.
+        """
         super().__init__()
         self._inner_opt_func = self._inner_opt
         self._outer_opt_func = self._outer_opt

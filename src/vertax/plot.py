@@ -21,28 +21,41 @@ class FacePlot(Enum):
     """What it is possible to show on a face."""
 
     MULTICOLOR = 1
+    """Each face get a random color."""
     FACE_PARAMETER = 2
+    """The face color depends on its parameter."""
     AREA = 3
+    """The face color depends on its area."""
     PERIMETER = 4
+    """The face color depends on its perimeter."""
     WHITE = 5
+    """All faces are just white."""
     FATES = 6
+    """Faces are colored depending on their fate marker (if any)."""
 
 
 class EdgePlot(Enum):
     """What it is possible to show on an edge."""
 
     BLACK = 1
+    """All edges are black."""
     EDGE_PARAMETER = 2
+    """The edge color depends on its parameter."""
     LENGTH = 3
+    """The edge color depends on its length."""
     INVISIBLE = 4
+    """Do not show edges."""
 
 
 class VertexPlot(Enum):
     """What it is possible to show on a vertex."""
 
     BLACK = 1
+    """Vertices are black."""
     VERTEX_PARAMETER = 2
+    """The vertex color depends on its parameter."""
     INVISIBLE = 3
+    """Do not show vertices."""
 
 
 def add_colorbar(fig: Figure, ax: Axes, v_min: float, v_max: float, cmap: Colormap) -> Colorbar:

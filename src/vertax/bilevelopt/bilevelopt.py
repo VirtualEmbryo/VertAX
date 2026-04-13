@@ -20,22 +20,38 @@ __all__ = ["_BilevelOptimizer"]
 
 
 class _BilevelOptimizer:
-    """Abstract class for Bi-level optimizers."""
+    """Abstract base class for Bi-level optimizers.
+
+    Use the specialezed corresponding ones:
+    - to optimize a `PbcMesh` use a `PbcBilevelOptimizer`,
+    - to optimize  a `BoundedMesh` use a `BoundedBilevelOptimizer`.
+    """
 
     def __init__(self) -> None:
         """Initialize shared parameters and hyper-parameters between Bi-level optimizers."""
-        self.custom_metrics: dict[str, tuple[Callable[[Any, Any], float], list[float], list[float]]] = {}
         self.bilevel_optimization_method: BilevelOptimizationMethod = BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION
+        """Which bilevel optimization method to use. Defaults to Equilibrium Propagation."""
         self.inner_solver: optax.GradientTransformation = optax.sgd(learning_rate=0.01)
+        """Which inner solver to use. Defaults to `optax.sgd(learning_rate=0.01)`."""
         self.outer_solver: optax.GradientTransformation = optax.adam(learning_rate=0.0001, nesterov=True)
+        """Which outer solver to use. Defaults to `optax.adam(learning_rate=0.0001, nesterov=True)`"""
         self.loss_function_inner: Callable | None = None
+        """Define your inner loss function."""
         self.loss_function_outer: Callable | None = None
+        """Define your outer loss function."""
+        self.custom_metrics: dict[str, tuple[Callable[[Any, Any], float], list[float], list[float]]] = {}
+        """Define custom metrics that can be saved during optimization.
+        The function must take two arguments : a mesh and a bilevel optimizer ; and return a float."""
 
         self.max_nb_iterations: int = 1000
+        """Maximum number of iterations during an optimization step."""
         self.tolerance: float = 1e-4
+        """Below this level, we consider that the loss is stagnating."""
         self.patience: int = 5
+        """Maximum number of consecutive stagnating loss before we stop."""
 
         self.min_dist_T1: float = 0.005
+        """Threshold to perform T1 transitions."""
         self._update_T1: bool = False
         self._update_T1_func: Callable | None = None  # value set by _set_update_T1_func
 
@@ -44,20 +60,23 @@ class _BilevelOptimizer:
         self._outer_opt_func: Callable[[Mesh, Array | None, Array | None, Array | None], None] | None = None
 
         self.update_T1 = True  # Force the setting of update T1 func
+        """Perform T1 transitions if necessary."""
 
         # Targets
         self.vertices_target = jnp.array([])
+        """Vertices table of a target mesh if any."""
         self.edges_target = jnp.array([])
+        """Edges table of a target mesh if any."""
         self.faces_target = jnp.array([])
+        """Faces table of a target mesh if any."""
         # Those attributes are not always used (depends on the bilevel_optimization_method)
         self.image_target: Array = jnp.array([])
+        """Image target if any."""
         self.beta = 0.01
+        """β parameter used for Equilibrium Propagation."""
 
     def _set_update_T1_func(self, b: bool) -> None:  # noqa: N802
-        """Set the _update_T1_func callable with respect to whether it is needed or not.
-
-        Must be implemented by child classes.
-        """
+        """Set the _update_T1_func callable with respect to whether it is needed or not."""
         raise NotImplementedError
 
     @property
@@ -158,7 +177,7 @@ class _BilevelOptimizer:
         only_on_edges: None | list[int] = None,
         only_on_faces: None | list[int] = None,
     ) -> list[float]:
-        """Optimize the mesh for the loss function given.
+        """Optimize the mesh for the loss functions given.
 
         Args:
             mesh (Mesh): The mesh to act on.

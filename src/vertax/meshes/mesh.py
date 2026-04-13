@@ -34,24 +34,60 @@ class NoPublicConstructor(type):
 
 
 class Mesh(metaclass=NoPublicConstructor):
-    """Generic mesh structure."""
+    """Generic mesh structure. It is an abstract base class, not to be used directly.
+
+    It defines common attributes and functions between `PbcMesh` and `BoundedMesh`.
+    """
 
     def __init__(self) -> None:
-        """Do nothing but create attributes. Do not call this."""
-        self.vertices: Array = jnp.array([])
-        self.edges: Array = jnp.array([])
-        self.faces: Array = jnp.array([])
-        self.width: float = 0
-        self.height: float = 0
+        """Do nothing but create attributes. Do not call this, but call specialized class methods to create meshes.
 
-        self.vertices_params: Array = jnp.array([])
-        self.edges_params: Array = jnp.array([])
+        See `PbcMesh` and `BoundedMesh`.
+
+        Technically, it uses a DCEL structure.
+        """
+        self.faces: Array = jnp.array([])
+        """The cells of the tissue."""
+        self.edges: Array = jnp.array([])
+        """The interface between cells. Technically half-edges."""
+        self.vertices: Array = jnp.array([])
+        """The mesh vertices, where cells meet."""
+        self.width: float = 0
+        """The mesh live in a rectangle of size [0, width] in the X direction."""
+        self.height: float = 0
+        """The mesh live in a rectangle of size [0, height] in the Y direction."""
+
         self.faces_params: Array = jnp.array([])
+        """Parameters attached to faces. Can be optimized."""
+        self.edges_params: Array = jnp.array([])
+        """Parameters attached to edges. Can be optimized."""
+        self.vertices_params: Array = jnp.array([])
+        """Parameters attached to vertices. Can be optimized."""
+
+    @property
+    def nb_faces(self) -> int:
+        """Get the number of faces of the mesh."""
+        return len(self.faces)
+
+    @property
+    def nb_edges(self) -> int:
+        """Get the number of edges of the mesh."""
+        return self.nb_half_edges // 2
+
+    @property
+    def nb_half_edges(self) -> int:
+        """Get the number of half-edges of the mesh, ie. twice the number of edges."""
+        return len(self.edges)
+
+    @property
+    def nb_vertices(self) -> int:
+        """Get the number of vertices of the mesh."""
+        return len(self.vertices)
 
     def save_mesh(self, path: str) -> None:
         """Save mesh to a file.
 
-        All mesh data is saved. Must be implemented by child classes.
+        All mesh data is saved.
 
         Args:
             path (str): Path to the saved file. The extension is .npz.
@@ -62,32 +98,10 @@ class Mesh(metaclass=NoPublicConstructor):
     def load_mesh(cls, path: str) -> Self:
         """Load a mesh from a file.
 
-        Must be implemented by child classes.
-
         Args:
             path (str): Path to the mesh file (.npz).
 
         Returns:
-            Mesh: the mesh loaded from the .npz file.
+            The mesh loaded from the .npz file.
         """
         raise NotImplementedError
-
-    @property
-    def nb_vertices(self) -> int:
-        """Get the number of vertices of the mesh."""
-        return len(self.vertices)
-
-    @property
-    def nb_edges(self) -> int:
-        """Get the number of edges of the mesh."""
-        return self.nb_half_edges // 2
-
-    @property
-    def nb_half_edges(self) -> int:
-        """Get the number of half-edges of the mesh."""
-        return len(self.edges)
-
-    @property
-    def nb_faces(self) -> int:
-        """Get the number of faces of the mesh."""
-        return len(self.faces)
