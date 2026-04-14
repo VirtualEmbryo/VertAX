@@ -272,7 +272,8 @@ def cost_mesh2image(
     image_target: Array,
 ) -> Array:
     """Example of a cost function."""
-    starting = (vertTable[heTable[selected_hes, 3], :2]) * 2 / [width, height]  # (M, 2)
+    wh = jnp.asarray([width, height])
+    starting = (vertTable[heTable[selected_hes, 3], :2]) * 2 / wh  # (M, 2)
     # ending = (vertTable[heTable[selected_hes, 4], :2]) * 2 / L_box  # (M, 2)
     ending = (
         (
@@ -284,10 +285,10 @@ def cost_mesh2image(
                 ],
                 axis=-1,
             )
-            * [width, height]
+            * wh
         )
         * 2
-        / [width, height]
+        / wh
     )
 
     he_edges = stack((starting, ending), axis=1)  # (N, 2, 2)
