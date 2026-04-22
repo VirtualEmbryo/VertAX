@@ -149,14 +149,7 @@ markers = ["long: marks tests as slow (deselect with '-m \"not slow\"')"]
 
 [dependency-groups]
 dev = [
-    "furo>=2025.12.19",
-    "myst-parser>=5.0.0",
     "pdoc>=16.0.0",
     "pytest>=8.4.2",
     "scalene>=1.5.55",
-    "sphinx>=9.0.4",
-    "sphinx-autoapi>=3.8.0",
-    "sphinx-autodoc-typehints>=3.6.1",
-    "sphinx-book-theme>=1.2.0",
-    "sphinx-copybutton>=0.5.2",
 ]
