@@ -312,22 +312,28 @@ def read_result() -> None:
 
 def show_tensions() -> None:
     """Find why an edge doesn't do good with IAS."""
-    mesh = PbcMesh.load_mesh("tests/correlation/results_part1/meshes_data/mesh_epoch_9500.npz")
-    plot_mesh(
-        mesh,
-        edge_plot=EdgePlot.EDGE_PARAMETER,
-        face_plot=FacePlot.WHITE,
-        edge_parameters_name="Tension",
-        title="Final mesh tensions",
-    )
-    target_mesh = PbcMesh.load_mesh("tests/correlation/results_part1/target_mesh.npz")
-    plot_mesh(
-        target_mesh,
-        edge_plot=EdgePlot.EDGE_PARAMETER,
-        face_plot=FacePlot.WHITE,
-        edge_parameters_name="Tension",
-        title="Target Mesh tensions",
-    )
+    for i in range(10):
+        step = 1200 + 100 * i
+        mesh = PbcMesh.load_mesh(f"tests/correlation/results_part1/meshes_data/mesh_epoch_{step}.npz")
+        plot_mesh(
+            mesh,
+            edge_plot=EdgePlot.EDGE_PARAMETER,
+            face_plot=FacePlot.WHITE,
+            edge_parameters_name="Tension",
+            title=f"Step {step} tensions",
+            show=False,
+            save=True,
+            save_path=f"tests/correlation/results_part1/tensions/mesh_epoch_{step}.png",
+            # forced_edge_scale=(0,2.)
+        )
+    # target_mesh = PbcMesh.load_mesh("tests/correlation/results_part1/target_mesh.npz")
+    # plot_mesh(
+    #     target_mesh,
+    #     edge_plot=EdgePlot.EDGE_PARAMETER,
+    #     face_plot=FacePlot.WHITE,
+    #     edge_parameters_name="Tension",
+    #     title="Target Mesh tensions",
+    # )
 
 
 if __name__ == "__main__":
