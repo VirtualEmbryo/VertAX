@@ -10,7 +10,7 @@ import optax
 
 from vertax import BoundedBilevelOptimizer, BoundedMesh
 from vertax.cost import cost_ratio
-from vertax.energy import energy_bounded
+from vertax.energy import energy_line_tensions_bounded
 from vertax.method_enum import BilevelOptimizationMethod
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ def test_n_bilevel_opt() -> None:
     bounded_mesh.faces_params = jnp.asarray([0.0 for _ in range(bounded_mesh.nb_faces)])
 
     # Energy minimization (init cond equilibrium)
-    bilevel_optimizer.loss_function_inner = energy_bounded
+    bilevel_optimizer.loss_function_inner = energy_line_tensions_bounded
     bilevel_optimizer.inner_optimization(mesh=bounded_mesh)
     # If you want to select only a subset of vertices, edges, and faces, it's possible:
     # pbc_mesh.inner_opt(
@@ -60,7 +60,7 @@ def test_n_bilevel_opt() -> None:
 
     def energy_metric(mesh: BoundedMesh, _bilevel_opt: BoundedBilevelOptimizer) -> float:
         return float(
-            energy_bounded(
+            energy_line_tensions_bounded(
                 mesh.vertices,
                 mesh.angles,
                 mesh.edges,

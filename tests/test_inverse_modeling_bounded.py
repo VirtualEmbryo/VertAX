@@ -8,7 +8,7 @@ from numpy.testing import assert_allclose
 
 from vertax import BoundedBilevelOptimizer, BoundedMesh
 from vertax.cost import cost_ratio
-from vertax.energy import energy_bounded
+from vertax.energy import energy_line_tensions_bounded
 from vertax.method_enum import BilevelOptimizationMethod
 
 
@@ -40,7 +40,7 @@ def test_regression() -> None:
     bilevel_optimizer.bilevel_optimization_method = BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION
 
     # Energy minimization
-    bilevel_optimizer.loss_function_inner = energy_bounded
+    bilevel_optimizer.loss_function_inner = energy_line_tensions_bounded
     bilevel_optimizer.inner_optimization(mesh=bounded_mesh)
 
     bilevel_optimizer.loss_function_outer = cost_ratio

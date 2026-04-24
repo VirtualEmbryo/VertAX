@@ -1,4 +1,4 @@
-"""Test the whole pipeline of bilevel optimization with the new API."""
+"""Test the whole pipeline of bilevel optimization with the new API, part 2 only v2v."""
 
 from __future__ import annotations
 
@@ -9,14 +9,11 @@ from typing import TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import numpy as np
 import optax
 from jax import vmap
-from numpy.typing import NDArray
 
-from vertax import EdgePlot, FacePlot, PbcBilevelOptimizer, PbcMesh, plot_mesh
-from vertax.cost import cost_v2v_ias
+from vertax import PbcBilevelOptimizer, PbcMesh, cost_v2v, plot_mesh
 from vertax.geo import get_area, get_length
 from vertax.method_enum import BilevelOptimizationMethod
 
@@ -83,7 +80,8 @@ def create_optimizer() -> PbcBilevelOptimizer:
     bop.inner_solver = optax.sgd(learning_rate=0.01)
     bop.outer_solver = optax.adam(learning_rate=0.0001, nesterov=True)
     bop.bilevel_optimization_method = BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION
-    bop.loss_function_outer = cost_v2v_ias
+    bop.loss_function_outer = cost_v2v
+    # bop.loss_function_outer = cost_v2v_ias
     return bop
 
 
@@ -103,75 +101,10 @@ def load_tensions_target() -> Array:
     return jnp.asarray(init_values_target)
 
 
-def _load_and_sort(target_path: str, init_path: str) -> tuple[NDArray, NDArray]:
-    target_data = np.loadtxt(target_path)
-    init_data = np.loadtxt(init_path)
-
-    target_values = target_data[:, 1]
-    init_values = init_data[:, 1]
-
-    sorted_indices = np.argsort(target_values)
-    sorted_target_values = target_values[sorted_indices]
-    corresponding_init_values = init_values[sorted_indices]
-
-    return sorted_target_values, corresponding_init_values
-
-
-def _expected_result() -> None:
-    nb_epochs = 2_400
-    target1, init1 = _load_and_sort(
-        "OLD_E2_working/OLD_E2_working/2_inference_multiple/energy_line_tensions_COUPLED/target/line_tensions_target.txt",
-        "OLD_E2_working/OLD_E2_working/2_inference_multiple/energy_line_tensions_COUPLED/starting_0.1/line_tensions_init.txt",
-    )
-    _, axes = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
-
-    # Plot for Initial Condition
-    axes[0].scatter(target1, init1, color="blue", alpha=0.7)
-    axes[0].plot([0.8, 1.7], [0.8, 1.7], color="red", linestyle="--", linewidth=1)  # Bisecting line
-    axes[0].set_title("Initial Condition")
-    axes[0].set_xlabel("Sorted Target Values")
-    axes[0].set_ylabel("Corresponding Simulation Values")
-    axes[0].set_xlim(0.65, 1.85)
-    axes[0].set_ylim(0.65, 1.85)
-    axes[1].set_xlim(0.65, 1.85)
-    axes[1].set_ylim(0.65, 1.85)
-
-    # Calculate and display correlation coefficient for Initial Condition
-    corr1 = np.corrcoef(target1, init1)[0, 1]
-    axes[0].text(
-        0.05, 0.95, f"Corr. coeff. = {corr1:.2f}", transform=axes[0].transAxes, fontsize=12, verticalalignment="top"
-    )
-
-    target2, init2 = _load_and_sort(
-        "OLD_E2_working/OLD_E2_working/2_inference_multiple/energy_line_tensions_COUPLED/target/line_tensions_target.txt",
-        f"OLD_E2_working/OLD_E2_working/2_inference_multiple/bilevel_opt_lines_LESS_COUPLED_0.1/configurations/{nb_epochs}/line_tensions_final.txt",
-    )
-
-    # Plot for Final Condition
-    axes[1].scatter(target2, init2, color="green", alpha=0.7)
-    axes[1].plot([0.8, 1.7], [0.8, 1.7], color="red", linestyle="--", linewidth=1)  # Bisecting line
-    axes[1].set_title("Final Condition")
-    axes[1].set_xlabel("Sorted Target Values")
-    axes[1].set_ylabel("Corresponding Simulation Values")
-
-    # # Ensure both subplots share the same x and y limits
-    # x_min = min(min(target1)-0.05, min(init1)-0.05, min(target2)-0.05, min(init2)-0.05)
-    # x_max = max(max(target1)+0.05, max(init1)+0.05, max(target2)+0.05, max(init2)+0.05)
-    # y_min = x_min
-    # y_max = x_max
-
-    # Calculate and display correlation coefficient for Final Condition
-    corr2 = np.corrcoef(target2, init2)[0, 1]
-    axes[1].text(
-        0.05, 0.95, f"Corr. coeff. = {corr2:.2f}", transform=axes[1].transAxes, fontsize=12, verticalalignment="top"
-    )
-
-    plt.show()
-
-
 def test_pearson_e2_t1() -> None:
     """Check identical result of a standard test with previous results (november 2025)."""
     t_start = perf_counter()
+    Path("tests/correlation/results").mkdir(exist_ok=True)
     nb_epochs = 10000
     MAX_EDGES_IN_ANY_FACE = 20
     areas_target = load_areas_target()
@@ -200,12 +133,7 @@ def test_pearson_e2_t1() -> None:
 
     he_params_reference = target_he_params[0]
 
-    mesh = PbcMesh.copy_mesh(mesh_target)
-    key = jax.random.PRNGKey(238487)  # change the seed for different results
-    # base_he_params = target_he_params + std_tensions * jax.random.normal(key, shape=(mesh.nb_edges,))
-    base_he_params = mu_tensions + std_tensions * jax.random.normal(key, shape=(mesh.nb_edges,))
-    # Set mesh parameters
-    mesh.edges_params = jnp.repeat(base_he_params, 2)
+    mesh = PbcMesh.load_mesh("tests/correlation/results_part1/meshes_data/mesh_epoch_2500.npz")
 
     # Energy functions : Note that they use the width and height parameters now, defined earlier
     def area_part(face: Array, _face_param: Array, vertTable: Array, heTable: Array, faceTable: Array) -> Array:
@@ -241,7 +169,6 @@ def test_pearson_e2_t1() -> None:
     # Energy minimization (init cond equilibrium)
     bop.loss_function_inner = energy
     bop.inner_optimization(mesh_target)
-    bop.inner_optimization(mesh)
     plot_mesh(mesh, show=False, save=True, save_path="tests/correlation/results/base_mesh.png", title="Base mesh")
     plot_mesh(
         mesh_target, show=False, save=True, save_path="tests/correlation/results/target_mesh.png", title="Target mesh"
@@ -310,31 +237,10 @@ def read_result() -> None:
     print(f"{len(tensions)} tension arrays acquired.")
 
 
-def show_tensions() -> None:
-    """Find why an edge doesn't do good with IAS."""
-    mesh = PbcMesh.load_mesh("tests/correlation/results_part1/meshes_data/mesh_epoch_9500.npz")
-    plot_mesh(
-        mesh,
-        edge_plot=EdgePlot.EDGE_PARAMETER,
-        face_plot=FacePlot.WHITE,
-        edge_parameters_name="Tension",
-        title="Final mesh tensions",
-    )
-    target_mesh = PbcMesh.load_mesh("tests/correlation/results_part1/target_mesh.npz")
-    plot_mesh(
-        target_mesh,
-        edge_plot=EdgePlot.EDGE_PARAMETER,
-        face_plot=FacePlot.WHITE,
-        edge_parameters_name="Tension",
-        title="Target Mesh tensions",
-    )
-
-
 if __name__ == "__main__":
-    show_tensions()
-    # translate_base_mesh()
-    # translate_target_mesh()
-    # test_pearson_e2_t1()
+    translate_base_mesh()
+    translate_target_mesh()
+    test_pearson_e2_t1()
     # read_result()
     # _expected_result()
     # print(load_base_mesh().edges_params)
