@@ -15,8 +15,7 @@ import optax
 from jax import vmap
 from numpy.typing import NDArray
 
-from vertax import EdgePlot, FacePlot, PbcBilevelOptimizer, PbcMesh, plot_mesh
-from vertax.cost import cost_v2v_ias
+from vertax import EdgePlot, FacePlot, PbcBilevelOptimizer, PbcMesh, cost_v2v, plot_mesh
 from vertax.geo import get_area, get_length
 from vertax.method_enum import BilevelOptimizationMethod
 
@@ -83,7 +82,8 @@ def create_optimizer() -> PbcBilevelOptimizer:
     bop.inner_solver = optax.sgd(learning_rate=0.01)
     bop.outer_solver = optax.adam(learning_rate=0.0001, nesterov=True)
     bop.bilevel_optimization_method = BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION
-    bop.loss_function_outer = cost_v2v_ias
+    bop.loss_function_outer = cost_v2v
+    # bop.loss_function_outer = cost_v2v_ias
     return bop
 
 
@@ -172,6 +172,7 @@ def _expected_result() -> None:
 def test_pearson_e2_t1() -> None:
     """Check identical result of a standard test with previous results (november 2025)."""
     t_start = perf_counter()
+    Path("tests/correlation/results").mkdir(exist_ok=True)
     nb_epochs = 10000
     MAX_EDGES_IN_ANY_FACE = 20
     areas_target = load_areas_target()
@@ -337,10 +338,10 @@ def show_tensions() -> None:
 
 
 if __name__ == "__main__":
-    show_tensions()
-    # translate_base_mesh()
-    # translate_target_mesh()
-    # test_pearson_e2_t1()
+    # show_tensions()
+    translate_base_mesh()
+    translate_target_mesh()
+    test_pearson_e2_t1()
     # read_result()
     # _expected_result()
     # print(load_base_mesh().edges_params)
