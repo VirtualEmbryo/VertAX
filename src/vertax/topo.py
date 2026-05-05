@@ -70,7 +70,7 @@ def update_T1(  # noqa: N802
         # check distance
         distance = get_length(he_idx, vertTable_new, heTable_new, faceTable_new, width, height)
 
-        # check if the two faces that share the hes are triangles
+        # check if the two faces that share the hes are triangles. We'll avoid a T1 transition in that case.
         he_prev = he[0]
         twin_he_prev = twin_he[0]
         should_update = heTable_new[he_prev, 0] != he[1]
@@ -127,6 +127,7 @@ def update_T1(  # noqa: N802
             heTable_new = heTable_new.at[next_twin_next_he_idx, 7].add(-twin_he[7])
 
             ## vertTable
+            # TODO: remove those two lines ?
             vertTable_new = vertTable_new.at[he[3], 2].set(he_idx)
             vertTable_new = vertTable_new.at[twin_he[3], 2].set(twin_he_idx)
 
