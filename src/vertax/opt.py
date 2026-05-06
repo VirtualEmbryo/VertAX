@@ -143,7 +143,7 @@ def _jit_minimize(
     step_count = jnp.array(0)
     should_stop = jnp.array(False)
 
-    # 2. Define the inner step function for lax.scan
+    # Define the inner step function for lax.scan
     # The inner function is defined *without* @jit because it's compiled by lax.scan/jit on minimize
     def scan_step(
         carry: tuple[Array, Array, Array, Array, Array, Array, Array, Array, Array, int, Array, Array], i: int
@@ -166,7 +166,7 @@ def _jit_minimize(
 
         # Determine if we are still running (i.e., not stopped)
         is_running = jnp.logical_not(should_stop)
-        # 1) Compute loss
+        # Compute loss
         L_current = L_in(
             vt[selected_verts],
             ht[selected_hes],
@@ -176,23 +176,23 @@ def _jit_minimize(
             fp[selected_faces],
         )
 
-        # 2) Early stopping bookkeeping
+        # Early stopping bookkeeping
         denom = jnp.where(prev_L_values[-1] != 0, prev_L_values[-1], 1.0)
         rel_var = jnp.abs((L_current - prev_L_values[-1]) / denom)
 
         new_stagnation_count = jnp.where(rel_var < tolerance, stagnation_count + 1, 0)
         new_should_stop = (new_stagnation_count >= patience) | (i >= iterations_max - 1)
 
-        # 3) Gradient wrt chosen argnums
+        # Gradient wrt chosen argnums
         grads = grad(L_in, argnums=optimization_target.value)(vt, ht, ft, vp, hp, fp)
 
-        # 4) Optimizer update
+        # Optimizer update
         updates, new_opt_state = solver.update(grads, opt_state)
 
-        # 5) Apply updates to the chosen array on selected indices
+        # Apply updates to the chosen array on selected indices
         updates_sel = updates.at[sel].get()  # type: ignore
 
-        # --- Conditional Application of Optimization Update and State ---
+        # Conditional application of optimization update and state
         arrays = [vt, ht, ft, vp, hp, fp]
         k = optimization_target.value
         new_optim = arrays[k].at[sel].set(arrays[k][sel] + updates_sel)
@@ -206,7 +206,7 @@ def _jit_minimize(
         stagnation_count = lax.cond(is_running, lambda: new_stagnation_count, lambda: stagnation_count)
         should_stop = new_should_stop  # should_stop is a flag for the *next* iteration
 
-        # 6) Geometry updates (Must also be conditional/masked)
+        # Geometry updates (must also be conditional/masked)
         new_vt_pbc, new_ht_pbc, new_ft_pbc = update_pbc(vt, ht, ft, width, height)
         vt = lax.cond(is_running, lambda: new_vt_pbc, lambda: vt)
         ht = lax.cond(is_running, lambda: new_ht_pbc, lambda: ht)
@@ -219,12 +219,12 @@ def _jit_minimize(
         ht = lax.cond(is_running, lambda: new_ht_T1, lambda: ht)
         ft = lax.cond(is_running, lambda: new_ft_T1, lambda: ft)
 
-        # 7) Shift prev_L_values
+        # Shift prev_L_values
         new_prev_L_values = prev_L_values.at[1:].set(prev_L_values[:-1])
         new_prev_L_values = new_prev_L_values.at[0].set(L_current)
         prev_L_values = lax.cond(is_running, lambda: new_prev_L_values, lambda: prev_L_values)
 
-        # 8) Update History and Step Count
+        # Update history and step count
         L_list = L_list.at[i].set(L_current)
         step_count = i + 1
 
@@ -244,8 +244,7 @@ def _jit_minimize(
         )
         return new_carry, None
 
-    # 3. Call lax.scan
-
+    # Call lax.scan
     init_carry = (
         vertTable,
         heTable,
@@ -263,7 +262,7 @@ def _jit_minimize(
 
     final_state, _ = lax.scan(scan_step, init_carry, xs=jnp.arange(iterations_max))  # ty:ignore[invalid-argument-type]
 
-    # 4. Unpack and return results (for slicing outside JIT)
+    # Unpack and return results (for slicing outside jit)
     vt_f, ht_f, ft_f, vp_f, hp_f, fp_f, _, _, _, step_f, _, L_hist = final_state
     return (vt_f, ht_f, ft_f, vp_f, hp_f, fp_f), (L_hist, step_f)  # ty:ignore[invalid-return-type]
 
@@ -377,11 +376,91 @@ def inner_opt(
     # Convert the JAX array step_f to a Python integer
     step_f = step_f_array.item()
 
-    # Now slice using standard Python/NumPy slicing
+    # Slice using standard Python/NumPy slicing
     final_L_list = L_hist_full[:step_f]
 
     # Return updated arrays and loss history
     return (vt_f, ht_f, ft_f), final_L_list
+
+
+def _periodic_sq_dist(p: Array, q: Array, width: float, height: float) -> Array:
+    """Squared distance under PBC between two 2D points (cols 0,1).
+
+    Mirrors `cost_v2v`'s convention: take the minimum over the 9 image shifts
+    (center + 8 surrounding sectors) of the target.
+    """
+    dx = p[0] - q[0]
+    dy = p[1] - q[1]
+    candidates = jnp.array(
+        [
+            dx * dx + dy * dy,
+            (dx - width) * (dx - width) + dy * dy,
+            (dx + width) * (dx + width) + dy * dy,
+            dx * dx + (dy - height) * (dy - height),
+            dx * dx + (dy + height) * (dy + height),
+            (dx - width) * (dx - width) + (dy - height) * (dy - height),
+            (dx - width) * (dx - width) + (dy + height) * (dy + height),
+            (dx + width) * (dx + width) + (dy - height) * (dy - height),
+            (dx + width) * (dx + width) + (dy + height) * (dy + height),
+        ]
+    )
+    return jnp.min(candidates)
+
+
+def _build_t1_repair_perm(
+    vertTable_after: Array,
+    vertTable_target: Array,
+    heTable_before: Array,
+    heTable_after: Array,
+    width: float,
+    height: float,
+) -> Array:
+    """Build a vertex-index permutation that swaps T1-flipped pairs when it lowers v2v cost.
+
+    A half-edge whose face index (col 5) changed across `inner_opt` was part of a T1: only
+    `update_T1` ever writes that column (`update_pbc` does not). For each such half-edge,
+    cols (3, 4) give the (a, b) vertex pair to test. Each T1 is reported twice (edge + twin);
+    the swap-only-if-better filter is idempotent, so duplicates are harmless.
+    """
+    perm = jnp.arange(vertTable_after.shape[0], dtype=jnp.int32)
+
+    t1_mask = heTable_before[:, 5] != heTable_after[:, 5]
+    pair_a = heTable_before[:, 3].astype(jnp.int32)
+    pair_b = heTable_before[:, 4].astype(jnp.int32)
+
+    def body(i: int, perm: Array) -> Array:
+        a = pair_a[i]
+        b = pair_b[i]
+        ta = vertTable_target[perm[a]]
+        tb = vertTable_target[perm[b]]
+        pa = vertTable_after[a]
+        pb = vertTable_after[b]
+        cost_no_swap = _periodic_sq_dist(pa, ta, width, height) + _periodic_sq_dist(pb, tb, width, height)
+        cost_swap = _periodic_sq_dist(pa, tb, width, height) + _periodic_sq_dist(pb, ta, width, height)
+        do_swap = t1_mask[i] & (cost_swap < cost_no_swap)
+        new_a_val = jnp.where(do_swap, perm[b], perm[a])
+        new_b_val = jnp.where(do_swap, perm[a], perm[b])
+        return perm.at[a].set(new_a_val).at[b].set(new_b_val)
+
+    return lax.fori_loop(0, heTable_before.shape[0], body, perm)
+
+
+def _apply_perm_to_state(
+    perm: Array,
+    vertTable: Array,
+    heTable: Array,
+) -> tuple[Array, Array]:
+    """Reorder vertTable rows and relabel vertex indices stored in heTable cols 3, 4.
+
+    heTable cols 0, 1, 2, 5 reference half-edges/faces and are unaffected. vertTable col 2
+    is a half-edge pointer per vertex; it tags along correctly with the row reorder.
+    Self-canceling for any cost that reads positions by half-edge (only cost_v2v sees the swap).
+    """
+    new_vertTable = vertTable[perm]
+    src = perm[heTable[:, 3].astype(jnp.int32)].astype(heTable.dtype)
+    tgt = perm[heTable[:, 4].astype(jnp.int32)].astype(heTable.dtype)
+    new_heTable = heTable.at[:, 3].set(src).at[:, 4].set(tgt)
+    return new_vertTable, new_heTable
 
 
 def cost_ad(
@@ -410,6 +489,8 @@ def cost_ad(
     update_t1_func: UpdateT1Func = update_T1,
 ) -> Array:
     """Automatic differentiation cost function."""
+    heTable_before = heTable
+
     (vertTable, heTable, faceTable), _loss = inner_opt(
         vertTable,
         heTable,
@@ -430,6 +511,16 @@ def cost_ad(
         selected_faces,
         update_t1_func,
     )
+
+    perm = _build_t1_repair_perm(
+        vertTable,
+        vertTable_target,
+        heTable_before,
+        heTable,
+        width,
+        height,
+    )
+    vertTable, heTable = _apply_perm_to_state(perm, vertTable, heTable)
 
     loss_out_value = L_out(
         vertTable,
@@ -476,59 +567,7 @@ def outer_opt(
     update_t1_func: UpdateT1Func = update_T1,
 ) -> tuple[Array, Array, Array]:
     """Outer optimization for Automatic differentiation method."""
-    grad_verts = grad(cost_ad, argnums=5)(
-        vertTable,
-        heTable,
-        faceTable,
-        width,
-        height,
-        vert_params,
-        he_params,
-        face_params,
-        vertTable_target,
-        heTable_target,
-        faceTable_target,
-        L_in,
-        L_out,
-        solver_inner,
-        min_dist_T1,
-        iterations_max,
-        tolerance,
-        patience,
-        selected_verts,
-        selected_hes,
-        selected_faces,
-        image_target,
-        update_t1_func,
-    )
-
-    grad_hes = grad(cost_ad, argnums=6)(
-        vertTable,
-        heTable,
-        faceTable,
-        width,
-        height,
-        vert_params,
-        he_params,
-        face_params,
-        vertTable_target,
-        heTable_target,
-        faceTable_target,
-        L_in,
-        L_out,
-        solver_inner,
-        min_dist_T1,
-        iterations_max,
-        tolerance,
-        patience,
-        selected_verts,
-        selected_hes,
-        selected_faces,
-        image_target,
-        update_t1_func,
-    )
-
-    grad_faces = grad(cost_ad, argnums=7)(
+    grad_verts, grad_hes, grad_faces = grad(cost_ad, argnums=(5, 6, 7))(
         vertTable,
         heTable,
         faceTable,
@@ -795,6 +834,8 @@ def outer_eq_prop(
     update_t1_func: UpdateT1Func = update_T1,
 ) -> tuple[Array, Array, Array]:
     """Outer optimization for equilibrium propagation method."""
+    heTable_before = heTable
+
     (vertTable_free, heTable_free, faceTable_free), _ = inner_eq_prop(
         vertTable,
         heTable,
@@ -822,6 +863,16 @@ def outer_eq_prop(
         patience,
         update_t1_func,
     )
+
+    perm_free = _build_t1_repair_perm(
+        vertTable_free,
+        vertTable_target,
+        heTable_before,
+        heTable_free,
+        width,
+        height,
+    )
+    vertTable_free, heTable_free = _apply_perm_to_state(perm_free, vertTable_free, heTable_free)
 
     (vertTable_nudged, heTable_nudged, faceTable_nudged), _ = inner_eq_prop(
         vertTable,
@@ -851,49 +902,19 @@ def outer_eq_prop(
         update_t1_func,
     )
 
-    grad_loss_ep_free_verts = grad(_loss_ep_static, argnums=5)(
-        vertTable_free,
-        heTable_free,
-        faceTable_free,
-        width,
-        height,
-        vert_params,
-        he_params,
-        face_params,
-        vertTable_target,
-        heTable_target,
-        faceTable_target,
-        L_in,
-        L_out,
-        selected_verts,
-        selected_hes,
-        selected_faces,
-        image_target,
-        beta=-beta,
-    )
-
-    grad_loss_ep_nudged_verts = grad(_loss_ep_static, argnums=5)(
+    perm_nudged = _build_t1_repair_perm(
         vertTable_nudged,
+        vertTable_target,
+        heTable_before,
         heTable_nudged,
-        faceTable_nudged,
         width,
         height,
-        vert_params,
-        he_params,
-        face_params,
-        vertTable_target,
-        heTable_target,
-        faceTable_target,
-        L_in,
-        L_out,
-        selected_verts,
-        selected_hes,
-        selected_faces,
-        image_target,
-        beta,
     )
+    vertTable_nudged, heTable_nudged = _apply_perm_to_state(perm_nudged, vertTable_nudged, heTable_nudged)
 
-    grad_loss_ep_free_hes = grad(_loss_ep_static, argnums=6)(
+    grad_ep = grad(_loss_ep_static, argnums=(5, 6, 7))
+
+    grad_loss_ep_free_verts, grad_loss_ep_free_hes, grad_loss_ep_free_faces = grad_ep(
         vertTable_free,
         heTable_free,
         faceTable_free,
@@ -914,49 +935,7 @@ def outer_eq_prop(
         beta=-beta,
     )
 
-    grad_loss_ep_nudged_hes = grad(_loss_ep_static, argnums=6)(
-        vertTable_nudged,
-        heTable_nudged,
-        faceTable_nudged,
-        width,
-        height,
-        vert_params,
-        he_params,
-        face_params,
-        vertTable_target,
-        heTable_target,
-        faceTable_target,
-        L_in,
-        L_out,
-        selected_verts,
-        selected_hes,
-        selected_faces,
-        image_target,
-        beta,
-    )
-
-    grad_loss_ep_free_faces = grad(_loss_ep_static, argnums=7)(
-        vertTable_free,
-        heTable_free,
-        faceTable_free,
-        width,
-        height,
-        vert_params,
-        he_params,
-        face_params,
-        vertTable_target,
-        heTable_target,
-        faceTable_target,
-        L_in,
-        L_out,
-        selected_verts,
-        selected_hes,
-        selected_faces,
-        image_target,
-        beta=-beta,
-    )
-
-    grad_loss_ep_nudged_faces = grad(_loss_ep_static, argnums=7)(
+    grad_loss_ep_nudged_verts, grad_loss_ep_nudged_hes, grad_loss_ep_nudged_faces = grad_ep(
         vertTable_nudged,
         heTable_nudged,
         faceTable_nudged,
@@ -1037,6 +1016,8 @@ def outer_implicit(
         vertTable_tmp = vertTable_flatten.reshape(len(vertTable_flatten) // 2, 2)
         return L_in(vertTable_tmp, heTable, faceTable, vert_params, he_params, face_params)
 
+    heTable_before = heTable
+
     (vertTable_eq, heTable_eq, faceTable_eq), _ = inner_opt(
         vertTable,
         heTable,
@@ -1057,6 +1038,16 @@ def outer_implicit(
         selected_faces,
         update_t1_func,
     )
+
+    perm = _build_t1_repair_perm(
+        vertTable_eq,
+        vertTable_target,
+        heTable_before,
+        heTable_eq,
+        width,
+        height,
+    )
+    vertTable_eq, heTable_eq = _apply_perm_to_state(perm, vertTable_eq, heTable_eq)
 
     vert_flat_eq = vertTable_eq.flatten()
 
@@ -1223,6 +1214,8 @@ def outer_adjoint_state(
         vertTable_tmp = vertTable_flatten.reshape(len(vertTable_flatten) // 2, 2)
         return L_in(vertTable_tmp, heTable, faceTable, vert_params, he_params, face_params)
 
+    heTable_before = heTable
+
     (vertTable_eq, heTable_eq, faceTable_eq), _L_in_value = inner_opt(
         vertTable,
         heTable,
@@ -1243,6 +1236,16 @@ def outer_adjoint_state(
         selected_faces,
         update_t1_func,
     )
+
+    perm = _build_t1_repair_perm(
+        vertTable_eq,
+        vertTable_target,
+        heTable_before,
+        heTable_eq,
+        width,
+        height,
+    )
+    vertTable_eq, heTable_eq = _apply_perm_to_state(perm, vertTable_eq, heTable_eq)
 
     vertTable_eq_flat = vertTable_eq.flatten()
 
