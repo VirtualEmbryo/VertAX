@@ -126,11 +126,6 @@ def update_T1(  # noqa: N802
             heTable_new = heTable_new.at[next_twin_next_he_idx, 6].add(-twin_he[6])
             heTable_new = heTable_new.at[next_twin_next_he_idx, 7].add(-twin_he[7])
 
-            ## vertTable
-            # TODO: remove those two lines ?
-            vertTable_new = vertTable_new.at[he[3], 2].set(he_idx)
-            vertTable_new = vertTable_new.at[twin_he[3], 2].set(twin_he_idx)
-
             # he
             x_source_he = vertTable_new[he[3], 0]
             y_source_he = vertTable_new[he[3], 1]
