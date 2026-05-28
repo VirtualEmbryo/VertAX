@@ -46,11 +46,32 @@ In symmetry with meshes, a base abstract class `_BilevelOptimizer` defines commo
 **VertAX** comes with pre-defined energy and cost functions but you can easily define your own functions. See the `examples` folder in the repository to have a typical example on how to use **VertAX**.
 
 Finally, there are plot functions to easily see the results of your experiments. See `plot_mesh` for example.
-"""
+
+Users can define their own energy functions for the inner optimization and cost function for the outer optimization, however we provide some basic ones.
+If you use your own make sure to use the exact same signature as we do for these functions, otherwise it won't work. See the cost and energy functions we provide in this documentation.
+"""  # noqa: D301, E501
 
 from vertax.bilevelopt.bilevelopt import _BilevelOptimizer
 from vertax.bilevelopt.boundedbop import BoundedBilevelOptimizer
 from vertax.bilevelopt.pbcbop import PbcBilevelOptimizer
+from vertax.cost import (
+    cost_areas,
+    cost_checkerboard,
+    cost_d_IAS,
+    cost_IAS,
+    cost_mesh2image,
+    cost_ratio,
+    cost_tem_halfedge,
+    cost_v2v,
+    cost_v2v_ias,
+    cost_v2v_tem,
+)
+from vertax.energy import (
+    energy_line_tensions,
+    energy_line_tensions_bounded,
+    energy_shape_factor_hetero,
+    energy_shape_factor_homo,
+)
 from vertax.meshes.bounded_mesh import BoundedMesh
 from vertax.meshes.mesh import Mesh
 from vertax.meshes.pbc_mesh import PbcMesh
@@ -70,4 +91,18 @@ __all__ = [  # noqa: RUF022
     "FacePlot",
     "EdgePlot",
     "VertexPlot",
+    "cost_v2v",
+    "cost_mesh2image",
+    "cost_areas",
+    "cost_IAS",
+    "cost_d_IAS",
+    "cost_tem_halfedge",
+    "cost_v2v_ias",
+    "cost_v2v_tem",
+    "cost_ratio",
+    "cost_checkerboard",
+    "energy_shape_factor_hetero",
+    "energy_shape_factor_homo",
+    "energy_line_tensions",
+    "energy_line_tensions_bounded",
 ]

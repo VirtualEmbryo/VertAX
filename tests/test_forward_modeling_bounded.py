@@ -6,7 +6,7 @@ import optax
 from numpy.testing import assert_allclose
 
 from vertax import BoundedBilevelOptimizer, BoundedMesh
-from vertax.energy import energy_bounded
+from vertax.energy import energy_line_tensions_bounded
 
 
 def test_regression() -> None:
@@ -34,7 +34,7 @@ def test_regression() -> None:
     bilevel_optimizer.patience = 5
 
     # Energy minimization
-    bilevel_optimizer.loss_function_inner = energy_bounded
+    bilevel_optimizer.loss_function_inner = energy_line_tensions_bounded
     bilevel_optimizer.inner_optimization(mesh=bounded_mesh)
 
     saved_path = "tests/reference_result_test_forward_modeling_bounded.npz"
