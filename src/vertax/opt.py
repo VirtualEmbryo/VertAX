@@ -423,8 +423,12 @@ def _build_t1_repair_perm(
     the swap-only-if-better filter is idempotent, so duplicates are harmless.
     """
     perm = jnp.arange(vertTable_after.shape[0], dtype=jnp.int32)
+    # TODO : replace with jax.cond ?
+    if vertTable_target is None or vertTable_target.size == 0:
+        return perm
 
     t1_mask = heTable_before[:, 5] != heTable_after[:, 5]
+    # jax.debug.print("t1_mask = {x}", x=t1_mask.any(), ordered=True)
     pair_a = heTable_before[:, 3].astype(jnp.int32)
     pair_b = heTable_before[:, 4].astype(jnp.int32)
 
@@ -856,7 +860,7 @@ def outer_eq_prop(
         selected_hes,
         selected_faces,
         image_target,
-        -beta,
+        0,
         solver_inner,
         min_dist_T1,
         iterations_max,
@@ -875,10 +879,47 @@ def outer_eq_prop(
     )
     vertTable_free, heTable_free = _apply_perm_to_state(perm_free, vertTable_free, heTable_free)
 
+    (vertTable_minus, heTable_minus, faceTable_minus), _ = inner_eq_prop(
+        vertTable_free,
+        heTable_free,
+        faceTable_free,
+        width,
+        height,
+        vert_params,
+        he_params,
+        face_params,
+        _loss_ep_static,
+        vertTable_target,
+        heTable_target,
+        faceTable_target,
+        L_in,
+        L_out,
+        selected_verts,
+        selected_hes,
+        selected_faces,
+        image_target,
+        -beta,
+        solver_inner,
+        min_dist_T1,
+        iterations_max,
+        tolerance,
+        patience,
+        update_t1_func,
+    )
+    perm_minus = _build_t1_repair_perm(
+        vertTable_minus,
+        vertTable_target,
+        heTable_free,
+        heTable_minus,
+        width,
+        height,
+    )
+    vertTable_minus, heTable_minus = _apply_perm_to_state(perm_minus, vertTable_minus, heTable_minus)
+
     (vertTable_nudged, heTable_nudged, faceTable_nudged), _ = inner_eq_prop(
-        vertTable,
-        heTable,
-        faceTable,
+        vertTable_free,
+        heTable_free,
+        faceTable_free,
         width,
         height,
         vert_params,
@@ -906,7 +947,7 @@ def outer_eq_prop(
     perm_nudged = _build_t1_repair_perm(
         vertTable_nudged,
         vertTable_target,
-        heTable_before,
+        heTable_free,
         heTable_nudged,
         width,
         height,
@@ -916,9 +957,9 @@ def outer_eq_prop(
     grad_ep = grad(_loss_ep_static, argnums=(5, 6, 7))
 
     grad_loss_ep_free_verts, grad_loss_ep_free_hes, grad_loss_ep_free_faces = grad_ep(
-        vertTable_free,
-        heTable_free,
-        faceTable_free,
+        vertTable_minus,
+        heTable_minus,
+        faceTable_minus,
         width,
         height,
         vert_params,
@@ -1168,7 +1209,7 @@ def outer_implicit(
     he_params = updated_params["he_params"]  # type: ignore
     face_params = updated_params["face_params"]  # type: ignore
 
-    return vertTable, heTable, faceTable, vert_params, he_params, face_params
+    return vertTable_eq, heTable_eq, faceTable_eq, vert_params, he_params, face_params
 
 
 ##########################
@@ -1314,7 +1355,7 @@ def outer_adjoint_state(
     he_params = updated_params["he_params"]  # type: ignore
     face_params = updated_params["face_params"]  # type: ignore
 
-    return vertTable, heTable, faceTable, vert_params, he_params, face_params
+    return vertTable_eq, heTable_eq, faceTable_eq, vert_params, he_params, face_params
 
 
 #############

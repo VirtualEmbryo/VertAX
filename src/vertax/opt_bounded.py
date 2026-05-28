@@ -6,7 +6,7 @@ from functools import partial
 import jax.numpy as jnp
 import numpy as np
 import optax
-from jax import Array, grad, jacfwd, jit, jvp, lax
+from jax import Array, grad, jacfwd, jit, jvp, lax, value_and_grad
 from numpy.typing import ArrayLike
 from scipy.sparse.linalg import LinearOperator, minres
 
@@ -308,6 +308,70 @@ def inner_opt_bounded(
     return (vt_f, at_f, ht_f, ft_f), final_L_list
 
 
+def _sq_dist(p: Array, q: Array) -> Array:
+    """Squared distance between 2D points (cols 0,1)."""
+    dx = p[0] - q[0]
+    dy = p[1] - q[1]
+    return dx * dx + dy * dy
+
+
+def _build_t1_repair_perm(
+    vertTable_after: Array,
+    vertTable_target: Array | None,
+    heTable_before: Array,
+    heTable_after: Array,
+) -> Array:
+    """Build a vertex-index permutation that swaps T1-flipped pairs when it lowers v2v cost.
+
+    A half-edge whose face index (col 7) changed across `inner_opt` was part of a T1: only
+    `update_T1` ever writes that column. For each such half-edge,
+    cols (3, 4) give the (a, b) vertex pair to test (T1 should only happen on inside edges).
+    Each T1 is reported twice (edge + twin);
+    the swap-only-if-better filter is idempotent, so duplicates are harmless.
+    """
+    perm = jnp.arange(vertTable_after.shape[0], dtype=jnp.int32)
+    # TODO : replace with jax.cond ?
+    if vertTable_target is None:
+        return perm
+
+    t1_mask = heTable_before[:, 7] != heTable_after[:, 7]
+    pair_a = heTable_before[:, 3].astype(jnp.int32)
+    pair_b = heTable_before[:, 4].astype(jnp.int32)
+
+    def body(i: int, perm: Array) -> Array:
+        a = pair_a[i]
+        b = pair_b[i]
+        ta = vertTable_target[perm[a]]
+        tb = vertTable_target[perm[b]]
+        pa = vertTable_after[a]
+        pb = vertTable_after[b]
+        cost_no_swap = _sq_dist(pa, ta) + _sq_dist(pb, tb)
+        cost_swap = _sq_dist(pa, tb) + _sq_dist(pb, ta)
+        do_swap = t1_mask[i] & (cost_swap < cost_no_swap)
+        new_a_val = jnp.where(do_swap, perm[b], perm[a])
+        new_b_val = jnp.where(do_swap, perm[a], perm[b])
+        return perm.at[a].set(new_a_val).at[b].set(new_b_val)
+
+    return lax.fori_loop(0, heTable_before.shape[0], body, perm)
+
+
+def _apply_perm_to_state(
+    perm: Array,
+    vertTable: Array,
+    heTable: Array,
+) -> tuple[Array, Array]:
+    """Reorder vertTable rows and relabel vertex indices stored in heTable cols 3, 4.
+
+    heTable cols 0, 1, 2, 5 reference half-edges/faces and are unaffected.
+    Self-canceling for any cost that reads positions by half-edge (only cost_v2v sees the swap).
+    """
+    new_vertTable = vertTable[perm]
+    src = perm[heTable[:, 3].astype(jnp.int32)].astype(heTable.dtype)
+    tgt = perm[heTable[:, 4].astype(jnp.int32)].astype(heTable.dtype)
+    new_heTable = heTable.at[:, 3].set(src).at[:, 4].set(tgt)
+    return new_vertTable, new_heTable
+
+
 def cost_ad_bounded(
     vertTable: Array,
     angTable: Array,
@@ -332,8 +396,10 @@ def cost_ad_bounded(
     selected_faces: Array | None = None,
     image_target: Array | None = None,
     update_T1_func: UpdateT1FuncBounded = update_T1_bounded,
-) -> Array:
+) -> tuple[Array, tuple[Array, Array, Array]]:
     """Automatic differentiation cost function."""
+    heTable_before = heTable
+
     (vertTable, angTable, heTable, faceTable), _ = inner_opt_bounded(
         vertTable,
         angTable,
@@ -354,6 +420,14 @@ def cost_ad_bounded(
         update_T1_func,
     )
 
+    perm = _build_t1_repair_perm(
+        vertTable,
+        vertTable_target,
+        heTable_before,
+        heTable,
+    )
+    vertTable, heTable = _apply_perm_to_state(perm, vertTable, heTable)
+
     loss_out_value = L_out(
         vertTable,
         angTable,
@@ -369,7 +443,7 @@ def cost_ad_bounded(
         image_target,
     )
 
-    return loss_out_value
+    return loss_out_value, (vertTable, heTable, faceTable)
 
 
 def outer_opt_bounded(
@@ -397,61 +471,11 @@ def outer_opt_bounded(
     selected_faces: Array | None = None,
     image_target: Array | None = None,
     update_T1_func: UpdateT1FuncBounded = update_T1_bounded,
-) -> tuple[Array, Array, Array]:
+) -> tuple[Array, Array, Array, Array, Array, Array]:
     """Outer optimization for a bounded mesh."""
-    grad_verts = grad(cost_ad_bounded, argnums=4)(
-        vertTable,
-        angTable,
-        heTable,
-        faceTable,
-        vert_params,
-        he_params,
-        face_params,
-        vertTable_target,
-        angTable_target,
-        heTable_target,
-        faceTable_target,
-        L_in,
-        L_out,
-        solver_inner,
-        min_dist_T1,
-        iterations_max,
-        tolerance,
-        patience,
-        selected_verts,
-        selected_hes,
-        selected_faces,
-        image_target,
-        update_T1_func,
-    )
-
-    grad_hes = grad(cost_ad_bounded, argnums=5)(
-        vertTable,
-        angTable,
-        heTable,
-        faceTable,
-        vert_params,
-        he_params,
-        face_params,
-        vertTable_target,
-        angTable_target,
-        heTable_target,
-        faceTable_target,
-        L_in,
-        L_out,
-        solver_inner,
-        min_dist_T1,
-        iterations_max,
-        tolerance,
-        patience,
-        selected_verts,
-        selected_hes,
-        selected_faces,
-        image_target,
-        update_T1_func,
-    )
-
-    grad_faces = grad(cost_ad_bounded, argnums=6)(
+    ((_, (vertTable, heTable, faceTable)), (grad_verts, grad_hes, grad_faces)) = value_and_grad(
+        cost_ad_bounded, argnums=(4, 5, 6), has_aux=True
+    )(
         vertTable,
         angTable,
         heTable,
@@ -486,7 +510,7 @@ def outer_opt_bounded(
     he_params = updated_params["he_params"]  # type: ignore
     face_params = updated_params["face_params"]  # type: ignore
 
-    return vert_params, he_params, face_params
+    return vertTable, heTable, faceTable, vert_params, he_params, face_params
 
 
 #############################
@@ -843,8 +867,10 @@ def outer_eq_prop_bounded(
     image_target: Array | None,
     beta: float,
     update_T1_func: UpdateT1FuncBounded = update_T1_bounded,
-) -> tuple[Array, Array, Array]:
+) -> tuple[Array, Array, Array, Array, Array, Array]:
     """Outer optimization for equilibrium propagation."""
+    heTable_before = heTable
+
     (vertTable_free, angTable_free, heTable_free, faceTable_free), _loss_free = inner_eq_prop_bounded(
         vertTable,
         angTable,
@@ -872,6 +898,14 @@ def outer_eq_prop_bounded(
         beta=-beta,
         update_T1_func=update_T1_func,
     )
+
+    perm_free = _build_t1_repair_perm(
+        vertTable_free,
+        vertTable_target,
+        heTable_before,
+        heTable_free,
+    )
+    vertTable_free, heTable_free = _apply_perm_to_state(perm_free, vertTable_free, heTable_free)
 
     (vertTable_nudged, angTable_nudged, heTable_nudged, faceTable_nudged), _loss_nudged = inner_eq_prop_bounded(
         vertTable,
@@ -901,49 +935,17 @@ def outer_eq_prop_bounded(
         update_T1_func,
     )
 
-    grad_loss_ep_free_verts = grad(_loss_ep_static_bounded, argnums=4)(
-        vertTable_free,
-        angTable_free,
-        heTable_free,
-        faceTable_free,
-        vert_params,
-        he_params,
-        face_params,
-        vertTable_target,
-        angTable_target,
-        heTable_target,
-        faceTable_target,
-        L_in,
-        L_out,
-        selected_verts,
-        selected_hes,
-        selected_faces,
-        image_target,
-        beta=-beta,
-    )
-
-    grad_loss_ep_nudged_verts = grad(_loss_ep_static_bounded, argnums=4)(
+    perm_nudged = _build_t1_repair_perm(
         vertTable_nudged,
-        angTable_nudged,
-        heTable_nudged,
-        faceTable_nudged,
-        vert_params,
-        he_params,
-        face_params,
         vertTable_target,
-        angTable_target,
-        heTable_target,
-        faceTable_target,
-        L_in,
-        L_out,
-        selected_verts,
-        selected_hes,
-        selected_faces,
-        image_target,
-        beta,
+        heTable_before,
+        heTable_nudged,
     )
+    vertTable_nudged, heTable_nudged = _apply_perm_to_state(perm_nudged, vertTable_nudged, heTable_nudged)
 
-    grad_loss_ep_free_hes = grad(_loss_ep_static_bounded, argnums=5)(
+    grad_ep = grad(_loss_ep_static_bounded, argnums=(4, 5, 6))
+
+    grad_loss_ep_free_verts, grad_loss_ep_free_hes, grad_loss_ep_free_faces = grad_ep(
         vertTable_free,
         angTable_free,
         heTable_free,
@@ -964,49 +966,7 @@ def outer_eq_prop_bounded(
         beta=-beta,
     )
 
-    grad_loss_ep_nudged_hes = grad(_loss_ep_static_bounded, argnums=5)(
-        vertTable_nudged,
-        angTable_nudged,
-        heTable_nudged,
-        faceTable_nudged,
-        vert_params,
-        he_params,
-        face_params,
-        vertTable_target,
-        angTable_target,
-        heTable_target,
-        faceTable_target,
-        L_in,
-        L_out,
-        selected_verts,
-        selected_hes,
-        selected_faces,
-        image_target,
-        beta,
-    )
-
-    grad_loss_ep_free_faces = grad(_loss_ep_static_bounded, argnums=6)(
-        vertTable_free,
-        angTable_free,
-        heTable_free,
-        faceTable_free,
-        vert_params,
-        he_params,
-        face_params,
-        vertTable_target,
-        angTable_target,
-        heTable_target,
-        faceTable_target,
-        L_in,
-        L_out,
-        selected_verts,
-        selected_hes,
-        selected_faces,
-        image_target,
-        beta=-beta,
-    )
-
-    grad_loss_ep_nudged_faces = grad(_loss_ep_static_bounded, argnums=6)(
+    grad_loss_ep_nudged_verts, grad_loss_ep_nudged_hes, grad_loss_ep_nudged_faces = grad_ep(
         vertTable_nudged,
         angTable_nudged,
         heTable_nudged,
@@ -1040,7 +1000,7 @@ def outer_eq_prop_bounded(
     he_params = updated_params["he_params"]  # type: ignore
     face_params = updated_params["face_params"]  # type: ignore
 
-    return vert_params, he_params, face_params
+    return vertTable_free, heTable_free, faceTable_free, vert_params, he_params, face_params
 
 
 ###########################
@@ -1073,7 +1033,7 @@ def outer_implicit_bounded(
     selected_faces: Array | None,
     image_target: Array | None,
     update_T1_func: UpdateT1FuncBounded = update_T1_bounded,
-) -> tuple[Array, Array, Array]:
+) -> tuple[Array, Array, Array, Array, Array, Array]:
     """Outer optimization for implicit differentiation method."""
 
     def L_in_flatten(  # noqa: N802
@@ -1101,6 +1061,8 @@ def outer_implicit_bounded(
             face_params,
         )
 
+    heTable_before = heTable
+
     (vertTable_eq, angTable_eq, heTable_eq, faceTable_eq), _L_in_value = inner_opt_bounded(
         vertTable,
         angTable,
@@ -1121,6 +1083,13 @@ def outer_implicit_bounded(
         update_T1_func,
     )
 
+    perm = _build_t1_repair_perm(
+        vertTable_eq,
+        vertTable_target,
+        heTable_before,
+        heTable_eq,
+    )
+    vertTable_eq, heTable_eq = _apply_perm_to_state(perm, vertTable_eq, heTable_eq)
     ################################################################
     ################            Start mod           ################
     ################################################################
@@ -1260,7 +1229,7 @@ def outer_implicit_bounded(
     he_params = updated_params["he_params"]  # type: ignore
     face_params = updated_params["face_params"]  # type: ignore
 
-    return vert_params, he_params, face_params
+    return vertTable_eq, heTable_eq, faceTable_eq, vert_params, he_params, face_params
 
 
 ##########################
@@ -1276,10 +1245,10 @@ def outer_adjoint_state_bounded(
     vert_params: Array,
     he_params: Array,
     face_params: Array,
-    vertTable_target: Array,
-    angTable_target: Array,
-    heTable_target: Array,
-    faceTable_target: Array,
+    vertTable_target: Array | None,
+    angTable_target: Array | None,
+    heTable_target: Array | None,
+    faceTable_target: Array | None,
     L_in: InnerLossFunctionBounded,
     L_out: OuterLossFunction,
     solver_inner: optax.GradientTransformation,
@@ -1293,7 +1262,7 @@ def outer_adjoint_state_bounded(
     selected_faces: Array | None,
     image_target: Array | None,
     update_T1_func: UpdateT1FuncBounded = update_T1_bounded,
-) -> tuple[Array, Array, Array]:
+) -> tuple[Array, Array, Array, Array, Array, Array]:
     """Outer optimization for adjoint state method."""
 
     def L_in_flatten(  # noqa: N802
@@ -1321,6 +1290,8 @@ def outer_adjoint_state_bounded(
             face_params,
         )
 
+    heTable_before = heTable
+
     (vertTable_eq, angTable_eq, heTable_eq, faceTable_eq), _L_in_value = inner_opt_bounded(
         vertTable,
         angTable,
@@ -1340,6 +1311,14 @@ def outer_adjoint_state_bounded(
         selected_faces,
         update_T1_func,
     )
+
+    perm = _build_t1_repair_perm(
+        vertTable_eq,
+        vertTable_target,
+        heTable_before,
+        heTable_eq,
+    )
+    vertTable_eq, heTable_eq = _apply_perm_to_state(perm, vertTable_eq, heTable_eq)
 
     vertTable_eq_flat = jnp.concatenate((vertTable_eq.flatten(), angTable_eq))
 
@@ -1426,7 +1405,7 @@ def outer_adjoint_state_bounded(
     he_params = updated_params["he_params"]  # type: ignore
     face_params = updated_params["face_params"]  # type: ignore
 
-    return vert_params, he_params, face_params
+    return vertTable, heTable, faceTable, vert_params, he_params, face_params
 
 
 #############
@@ -1465,7 +1444,7 @@ def bilevel_opt_bounded(
     """Bilevel optimization for bounded meshes."""
     match optimization_method:
         case BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION:
-            vert_params, he_params, face_params = outer_opt_bounded(
+            vertTable, heTable, faceTable, vert_params, he_params, face_params = outer_opt_bounded(
                 vertTable,
                 angTable,
                 heTable,
@@ -1491,7 +1470,7 @@ def bilevel_opt_bounded(
                 image_target,
             )
         case BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION:
-            vert_params, he_params, face_params = outer_eq_prop_bounded(
+            vertTable, heTable, faceTable, vert_params, he_params, face_params = outer_eq_prop_bounded(
                 vertTable,
                 angTable,
                 heTable,
@@ -1519,7 +1498,34 @@ def bilevel_opt_bounded(
                 update_T1_func,
             )
         case BilevelOptimizationMethod.IMPLICIT_DIFFERENTIATION:
-            vert_params, he_params, face_params = outer_implicit_bounded(
+            vertTable, heTable, faceTable, vert_params, he_params, face_params = outer_implicit_bounded(
+                vertTable,
+                angTable,
+                heTable,
+                faceTable,
+                vert_params,
+                he_params,
+                face_params,
+                vertTable_target,
+                angTable_target,
+                heTable_target,
+                faceTable_target,
+                L_in,
+                L_out,
+                solver_inner,
+                solver_outer,
+                min_dist_T1,
+                iterations_max,
+                tolerance,
+                patience,
+                selected_verts,
+                selected_hes,
+                selected_faces,
+                image_target,
+                update_T1_func,
+            )
+        case BilevelOptimizationMethod.ADJOINT_STATE:
+            vertTable, heTable, faceTable, vert_params, he_params, face_params = outer_adjoint_state_bounded(
                 vertTable,
                 angTable,
                 heTable,

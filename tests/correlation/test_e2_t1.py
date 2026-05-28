@@ -81,7 +81,7 @@ def create_optimizer() -> PbcBilevelOptimizer:
     bop.patience = 5
     bop.inner_solver = optax.sgd(learning_rate=0.01)
     bop.outer_solver = optax.adam(learning_rate=0.0001, nesterov=True)
-    bop.bilevel_optimization_method = BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION
+    bop.bilevel_optimization_method = BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION
     bop.loss_function_outer = cost_v2v
     # bop.loss_function_outer = cost_v2v_ias
     return bop
@@ -207,6 +207,8 @@ def test_pearson_e2_t1() -> None:
     mesh.edges_params = jnp.repeat(base_he_params, 2)
 
     # Energy functions : Note that they use the width and height parameters now, defined earlier
+    he_params_reference = target_he_params[0]
+
     def area_part(face: Array, _face_param: Array, vertTable: Array, heTable: Array, faceTable: Array) -> Array:
         a = get_area(face, vertTable, heTable, faceTable, width, height, MAX_EDGES_IN_ANY_FACE)
         # return (a - face_param) ** 2
@@ -230,9 +232,15 @@ def test_pearson_e2_t1() -> None:
             return hedge_part(he, he_param, vertTable, heTable, faceTable)
 
         areas_part = vmap(mapped_areas_part)(jnp.arange(len(faceTable)), face_params)
-        hedges_part = vmap(mapped_hedges_part)(jnp.arange(len(heTable)), he_params)
-        soft_mean_part = (jnp.mean(he_params) - 1) ** 2
-        return jnp.sum(hedges_part) + (0.5 * K_areas) * jnp.sum(areas_part) + soft_mean_part
+        # hedges_part = vmap(mapped_hedges_part)(jnp.arange(len(heTable)), he_params)
+        # soft_mean_part = (jnp.mean(he_params) - 1) ** 2
+        # return jnp.sum(hedges_part) + (0.5 * K_areas) * jnp.sum(areas_part) + soft_mean_part
+        hedges_part = vmap(mapped_hedges_part)(jnp.arange(2, len(heTable)), he_params[2:])
+        return (
+            (2 * he_params_reference * get_length(0, vertTable, heTable, faceTable, width, height))
+            + jnp.sum(hedges_part)
+            + (0.5 * K_areas) * jnp.sum(areas_part)
+        )
 
     # Energy minimization (init cond equilibrium)
     bop.loss_function_inner = energy
@@ -255,40 +263,12 @@ def test_pearson_e2_t1() -> None:
     bop.do_n_bilevel_optimization(
         nb_epochs,
         mesh,
-        report_every=10,
+        report_every=100,
         save_plotmesh_every=100,
         save_mesh_data_every=100,
         also_report_to_stdout=True,
         save_folder="tests/correlation/results",
     )
-    # for j in range(epochs + 1):
-    #     t1 = perf_counter()
-    #     print(
-    #         "epoch: "
-    #         + str(j)
-    #         + "/"
-    #         + str(epochs)
-    #         + "\t cost: "
-    #         + str(
-    #             cost_v2v(
-    #                 pbc_mesh.vertices,
-    #                 pbc_mesh.edges,
-    #                 pbc_mesh.faces,
-    #                 pbc_mesh.width,
-    #                 pbc_mesh.height,
-    #                 bilevel_optimizer.vertices_target,
-    #                 bilevel_optimizer.edges_target,
-    #                 bilevel_optimizer.faces_target,
-    #             )
-    #         )
-    #     )
-    #
-    #     bilevel_optimizer.bilevel_optimization(pbc_mesh)
-    #     print(perf_counter() - t1)
-    #     pearson_corr = float(jnp.corrcoef(pbc_mesh.edges_params, pbc_mesh_target.edges_params)[0, 1])
-    #     print("Pearson", pearson_corr)
-    #     np_corr = np.corrcoef(pbc_mesh.edges_params, pbc_mesh_target.edges_params)[0, 1]
-    #     print("Pearson np", np_corr)
 
     t_end = perf_counter()
     elapsed_times = t_end - t_start
@@ -308,9 +288,9 @@ def read_result() -> None:
 
 def show_tensions() -> None:
     """Find why an edge doesn't do good with IAS."""
-    for i in range(10):
-        step = 1200 + 100 * i
-        mesh = PbcMesh.load_mesh(f"tests/correlation/results_part1/meshes_data/mesh_epoch_{step}.npz")
+    for i in range(30):
+        step = 0 + 10 * i
+        mesh = PbcMesh.load_mesh(f"tests/correlation/results/meshes_data/mesh_epoch_{step}.npz")
         plot_mesh(
             mesh,
             edge_plot=EdgePlot.EDGE_PARAMETER,
@@ -319,7 +299,7 @@ def show_tensions() -> None:
             title=f"Step {step} tensions",
             show=False,
             save=True,
-            save_path=f"tests/correlation/results_part1/tensions/mesh_epoch_{step}.png",
+            save_path=f"tests/correlation/results/tensions/mesh_epoch_{step}.png",
             # forced_edge_scale=(0,2.)
         )
     # target_mesh = PbcMesh.load_mesh("tests/correlation/results_part1/target_mesh.npz")
@@ -333,10 +313,10 @@ def show_tensions() -> None:
 
 
 if __name__ == "__main__":
-    # show_tensions()
-    translate_base_mesh()
-    translate_target_mesh()
-    test_pearson_e2_t1()
+    show_tensions()
+    # translate_base_mesh()
+    # translate_target_mesh()
+    # test_pearson_e2_t1()
     # read_result()
     # _expected_result()
     # print(load_base_mesh().edges_params)
