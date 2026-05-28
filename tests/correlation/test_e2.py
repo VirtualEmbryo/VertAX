@@ -6,6 +6,7 @@ import math
 from time import perf_counter
 from typing import TYPE_CHECKING
 
+import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,7 +14,7 @@ import optax
 from jax import vmap
 from numpy.typing import NDArray
 
-from vertax import PbcBilevelOptimizer, PbcMesh
+from vertax import PbcBilevelOptimizer, PbcMesh, plot_mesh
 from vertax.cost import cost_v2v
 from vertax.geo import get_area, get_length
 from vertax.method_enum import BilevelOptimizationMethod
@@ -173,19 +174,39 @@ def test_pearson_e2() -> None:
     nb_epochs = 10000
     MAX_EDGES_IN_ANY_FACE = 20
     areas_target = load_areas_target()
-    line_tensions_target = load_tensions_target()
 
-    mesh = load_base_mesh()
-    width = mesh.width
-    height = mesh.height
-    # mesh.edges = jnp.repeat(mesh.edges, 2, axis=0)
-    mesh.edges_params = jnp.repeat(mesh.edges_params, 2)
+    n_cells = 20
+    width = math.sqrt(n_cells)
+    height = width
 
-    target_mesh = load_target_mesh()
+    # target_mesh = load_target_mesh()
 
     bop = create_optimizer()
 
-    he_params_reference = line_tensions_target[0]
+    mesh_target = PbcMesh.periodic_voronoi_from_random_seeds(
+        nb_seeds=n_cells, width=width, height=height, random_key=1290
+    )
+
+    # Initial condition (parameters)
+    mesh_target.vertices_params = jnp.asarray([0.0 for _ in range(mesh_target.nb_vertices)])
+
+    mu_tensions = 2.1
+    std_tensions = 0.3
+    key = jax.random.PRNGKey(543)  # change the seed for different results
+    target_he_params = mu_tensions + std_tensions * jax.random.normal(key, shape=(mesh_target.nb_edges,))
+    # Set mesh parameters
+    mesh_target.edges_params = jnp.repeat(target_he_params, 2)
+
+    mesh_target.faces_params = jnp.asarray([1.0 for _ in range(mesh_target.nb_faces)])
+
+    he_params_reference = target_he_params[0]
+
+    mesh = PbcMesh.copy_mesh(mesh_target)
+    key = jax.random.PRNGKey(125)  # change the seed for different results
+    # base_he_params = target_he_params + std_tensions * jax.random.normal(key, shape=(mesh.nb_edges,))
+    base_he_params = mu_tensions + std_tensions * jax.random.normal(key, shape=(mesh.nb_edges,))
+    # Set mesh parameters
+    mesh.edges_params = jnp.repeat(base_he_params, 2)
 
     # Energy functions : Note that they use the width and height parameters now, defined earlier
     def area_part(face: Array, _face_param: Array, vertTable: Array, heTable: Array, faceTable: Array) -> Array:
@@ -220,17 +241,30 @@ def test_pearson_e2() -> None:
 
     # Energy minimization (init cond equilibrium)
     bop.loss_function_inner = energy
+    bop.inner_optimization(mesh_target)
+    bop.inner_optimization(mesh)
+    plot_mesh(mesh, show=False, save=True, save_path="tests/correlation/results/base_mesh.png", title="Base mesh")
+    plot_mesh(
+        mesh_target, show=False, save=True, save_path="tests/correlation/results/target_mesh.png", title="Target mesh"
+    )
+    mesh_target.save_mesh("tests/correlation/results/target_mesh.npz")
 
-    bop.vertices_target = target_mesh.vertices.copy()
-    bop.edges_target = target_mesh.edges.copy()
-    bop.faces_target = target_mesh.faces.copy()
+    bop.vertices_target = mesh_target.vertices.copy()
+    bop.edges_target = mesh_target.edges.copy()
+    bop.faces_target = mesh_target.faces.copy()
 
     def pearson_correlation(mesh: PbcMesh, _bop: PbcBilevelOptimizer) -> float:
-        return float(jnp.corrcoef(mesh.edges_params, line_tensions_target)[0, 1])
+        return float(jnp.corrcoef(mesh.edges_params, mesh_target.edges_params)[0, 1])
 
     bop.add_custom_metric("Pearson correlation", pearson_correlation)
     bop.do_n_bilevel_optimization(
-        nb_epochs, mesh, report_every=10, also_report_to_stdout=True, save_folder="tests/correlation/results"
+        nb_epochs,
+        mesh,
+        report_every=10,
+        save_plotmesh_every=100,
+        save_mesh_data_every=100,
+        also_report_to_stdout=True,
+        save_folder="tests/correlation/results",
     )
     # for j in range(epochs + 1):
     #     t1 = perf_counter()
