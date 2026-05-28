@@ -15,6 +15,7 @@ Alessandro_plot_code
 test_n_bilevel/
 test_n_bilevel_bounded/
 tests/correlation/results*
+VertAX-7.pdf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
