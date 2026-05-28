@@ -119,11 +119,15 @@ class PbcMesh(Mesh):
         """
         mesh_file = np.load(path)
         mesh = cls._create()
-        mesh.vertices, mesh.edges, mesh.faces = mesh_file["vertices"], mesh_file["edges"], mesh_file["faces"]
-        mesh.width, mesh.height = mesh_file["width"], mesh_file["height"]
-        mesh.vertices_params = mesh_file["vertices_params"]
-        mesh.edges_params = mesh_file["edges_params"]
-        mesh.faces_params = mesh_file["faces_params"]
+        mesh.vertices, mesh.edges, mesh.faces = (
+            jnp.array(mesh_file["vertices"]),
+            jnp.array(mesh_file["edges"].reshape(-1, 8)),
+            jnp.array(mesh_file["faces"]),
+        )
+        mesh.width, mesh.height = float(mesh_file["width"]), float(mesh_file["height"])
+        mesh.vertices_params = jnp.array(mesh_file["vertices_params"])
+        mesh.edges_params = jnp.array(mesh_file["edges_params"])
+        mesh.faces_params = jnp.array(mesh_file["faces_params"])
         mesh.MAX_EDGES_IN_ANY_FACE = mesh_file["MAX_EDGES_IN_ANY_FACE"]
         return mesh
 
@@ -218,6 +222,11 @@ class PbcMesh(Mesh):
         self.vertices, self.edges, self.faces = update_pbc(
             self.vertices, self.edges, self.faces, self.width, self.height
         )
+
+    @classmethod
+    def empty_mesh(cls) -> Self:
+        """Return an empty mesh."""
+        return cls._create()
 
     @classmethod
     def periodic_voronoi_from_random_seeds(cls, nb_seeds: int, width: float, height: float, random_key: int) -> Self:
