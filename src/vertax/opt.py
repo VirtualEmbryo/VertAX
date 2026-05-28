@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
-from jax import Array, grad, jacfwd, jit, jvp, lax
+from jax import Array, grad, jacfwd, jit, jvp, lax, value_and_grad
 from numpy.typing import ArrayLike
 from scipy.sparse.linalg import LinearOperator, minres
 
@@ -452,8 +452,7 @@ def _apply_perm_to_state(
 ) -> tuple[Array, Array]:
     """Reorder vertTable rows and relabel vertex indices stored in heTable cols 3, 4.
 
-    heTable cols 0, 1, 2, 5 reference half-edges/faces and are unaffected. vertTable col 2
-    is a half-edge pointer per vertex; it tags along correctly with the row reorder.
+    heTable cols 0, 1, 2, 5 reference half-edges/faces and are unaffected.
     Self-canceling for any cost that reads positions by half-edge (only cost_v2v sees the swap).
     """
     new_vertTable = vertTable[perm]
@@ -487,7 +486,7 @@ def cost_ad(
     selected_faces: Array | None = None,
     image_target: Array | None = None,
     update_t1_func: UpdateT1Func = update_T1,
-) -> Array:
+) -> tuple[Array, tuple[Array, Array, Array]]:
     """Automatic differentiation cost function."""
     heTable_before = heTable
 
@@ -537,7 +536,7 @@ def cost_ad(
         image_target,
     )
 
-    return loss_out_value
+    return loss_out_value, (vertTable, heTable, faceTable)
 
 
 def outer_opt(
@@ -565,9 +564,11 @@ def outer_opt(
     selected_faces: Array | None,
     image_target: Array | None,
     update_t1_func: UpdateT1Func = update_T1,
-) -> tuple[Array, Array, Array]:
+) -> tuple[Array, Array, Array, Array, Array, Array]:
     """Outer optimization for Automatic differentiation method."""
-    grad_verts, grad_hes, grad_faces = grad(cost_ad, argnums=(5, 6, 7))(
+    ((_, (vertTable, heTable, faceTable)), (grad_verts, grad_hes, grad_faces)) = value_and_grad(
+        cost_ad, argnums=(5, 6, 7), has_aux=True
+    )(
         vertTable,
         heTable,
         faceTable,
@@ -602,7 +603,7 @@ def outer_opt(
     new_he_params: Array = updated_params["he_params"]  # type: ignore
     new_face_params: Array = updated_params["face_params"]  # type: ignore
 
-    return new_vert_params, new_he_params, new_face_params
+    return vertTable, heTable, faceTable, new_vert_params, new_he_params, new_face_params
 
 
 #############################
@@ -832,7 +833,7 @@ def outer_eq_prop(
     image_target: Array | None,
     beta: float,
     update_t1_func: UpdateT1Func = update_T1,
-) -> tuple[Array, Array, Array]:
+) -> tuple[Array, Array, Array, Array, Array, Array]:
     """Outer optimization for equilibrium propagation method."""
     heTable_before = heTable
 
@@ -969,7 +970,7 @@ def outer_eq_prop(
     he_params = updated_params["he_params"]  # type: ignore
     face_params = updated_params["face_params"]  # type: ignore
 
-    return vert_params, he_params, face_params
+    return vertTable_free, heTable_free, faceTable_free, vert_params, he_params, face_params
 
 
 ###########################
@@ -1002,7 +1003,7 @@ def outer_implicit(
     selected_faces: Array | None,
     image_target: Array | None,
     update_t1_func: UpdateT1Func = update_T1,
-) -> tuple[Array, Array, Array]:
+) -> tuple[Array, Array, Array, Array, Array, Array]:
     """Outer optimization for implicit differentiation method."""
 
     def L_in_flatten(  # noqa: N802
@@ -1167,7 +1168,7 @@ def outer_implicit(
     he_params = updated_params["he_params"]  # type: ignore
     face_params = updated_params["face_params"]  # type: ignore
 
-    return vert_params, he_params, face_params
+    return vertTable, heTable, faceTable, vert_params, he_params, face_params
 
 
 ##########################
@@ -1200,7 +1201,7 @@ def outer_adjoint_state(
     selected_faces: Array | None,
     image_target: Array | None,
     update_t1_func: UpdateT1Func = update_T1,
-) -> tuple[Array, Array, Array]:
+) -> tuple[Array, Array, Array, Array, Array, Array]:
     """Outer optimization for adjoint state method."""
 
     def L_in_flatten(  # noqa: N802
@@ -1313,7 +1314,7 @@ def outer_adjoint_state(
     he_params = updated_params["he_params"]  # type: ignore
     face_params = updated_params["face_params"]  # type: ignore
 
-    return vert_params, he_params, face_params
+    return vertTable, heTable, faceTable, vert_params, he_params, face_params
 
 
 #############
@@ -1352,7 +1353,7 @@ def bilevel_opt(
     """Bilevel optimization for PBC meshes."""
     match method:
         case BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION:
-            vert_params, he_params, face_params = outer_opt(
+            vertTable, heTable, faceTable, vert_params, he_params, face_params = outer_opt(
                 vertTable,
                 heTable,
                 faceTable,
@@ -1380,7 +1381,7 @@ def bilevel_opt(
             )
 
         case BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION:
-            vert_params, he_params, face_params = outer_eq_prop(
+            vertTable, heTable, faceTable, vert_params, he_params, face_params = outer_eq_prop(
                 vertTable,
                 heTable,
                 faceTable,
@@ -1409,7 +1410,7 @@ def bilevel_opt(
             )
 
         case BilevelOptimizationMethod.IMPLICIT_DIFFERENTIATION:
-            vert_params, he_params, face_params = outer_implicit(
+            vertTable, heTable, faceTable, vert_params, he_params, face_params = outer_implicit(
                 vertTable,
                 heTable,
                 faceTable,
@@ -1437,7 +1438,7 @@ def bilevel_opt(
             )
 
         case BilevelOptimizationMethod.ADJOINT_STATE:
-            vert_params, he_params, face_params = outer_adjoint_state(
+            vertTable, heTable, faceTable, vert_params, he_params, face_params = outer_adjoint_state(
                 vertTable,
                 heTable,
                 faceTable,
