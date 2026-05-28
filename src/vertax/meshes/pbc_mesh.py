@@ -224,12 +224,12 @@ class PbcMesh(Mesh):
         )
 
     @classmethod
-    def empty_mesh(cls) -> Self:
+    def create_empty(cls) -> Self:
         """Return an empty mesh."""
         return cls._create()
 
     @classmethod
-    def periodic_voronoi_from_random_seeds(cls, nb_seeds: int, width: float, height: float, random_key: int) -> Self:
+    def from_random_seeds(cls, nb_seeds: int, width: float, height: float, random_key: int) -> Self:
         """Create a Periodic Voronoi Mesh from random seeds.
 
         Args:
@@ -243,10 +243,10 @@ class PbcMesh(Mesh):
         """
         key = jax.random.PRNGKey(random_key)
         seeds = jnp.array((width, height)) * jax.random.uniform(key, (nb_seeds, 2))
-        return cls.periodic_voronoi_from_seeds(seeds, width, height)
+        return cls.from_seeds(seeds, width, height)
 
     @classmethod
-    def periodic_voronoi_from_seeds(cls, seeds: Array, width: float, height: float) -> Self:
+    def from_seeds(cls, seeds: Array, width: float, height: float) -> Self:
         """Create a Periodic Voronoi Mesh from a list of seeds.
 
         The seeds are assumed to have positive x and y positions.
@@ -284,7 +284,7 @@ class PbcMesh(Mesh):
         return pbc_mesh
 
     @classmethod
-    def periodic_from_image(
+    def from_image(
         cls,
         image: NDArray,
     ) -> Self:
@@ -300,10 +300,10 @@ class PbcMesh(Mesh):
         Returns:
             tuple[Array, Array, Array]:  The vertices, half-edges and faces table of the mesh.
         """
-        return cls.periodic_from_mask(mask_from_image(image))
+        return cls.from_mask(mask_from_image(image))
 
     @classmethod
-    def periodic_from_mask(  # noqa: C901
+    def from_mask(  # noqa: C901
         cls,
         mask: NDArray,
     ) -> Self:

@@ -38,7 +38,7 @@ def test_compare_pbc_mesh_with_create_mesh_from_seeds() -> None:
     seeds = L_box * jax.random.uniform(key, (n_cells, 2))
     vertTable, heTable, faceTable = create_mesh_from_seeds(seeds)
 
-    my_mesh = PbcMesh.periodic_voronoi_from_random_seeds(n_cells, width, height, random_key=1)
+    my_mesh = PbcMesh.from_random_seeds(n_cells, width, height, random_key=1)
 
     assert_array_equal(my_mesh.vertices, vertTable)
     assert_array_equal(my_mesh.edges, heTable)
@@ -66,7 +66,7 @@ def test_compare_pbc_mesh_with_create_mesh_from_image() -> None:
         )
 
     print("PBC now...")
-    my_mesh = PbcMesh.periodic_from_image(img)
+    my_mesh = PbcMesh.from_image(img)
     if plot:
         plot_mesh(
             my_mesh.vertices,

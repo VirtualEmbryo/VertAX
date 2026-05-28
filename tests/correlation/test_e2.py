@@ -32,7 +32,7 @@ def translate_base_mesh() -> None:
     """Translate old mesh data to new version."""
     vertices, edges, faces = load_geograph("tests/correlation/input/")
     vertices = vertices[:, :2]
-    mesh = PbcMesh.empty_mesh()
+    mesh = PbcMesh.create_empty()
     mesh.vertices = vertices
     mesh.edges = edges.reshape(-1, 8)
     mesh.faces = faces
@@ -53,7 +53,7 @@ def translate_target_mesh() -> None:
     """Translate old mesh data to new version (target mesh)."""
     vertices, edges, faces = load_geograph("tests/correlation/target/")
     vertices = vertices[:, :2]
-    mesh = PbcMesh.empty_mesh()
+    mesh = PbcMesh.create_empty()
     mesh.vertices = vertices
     mesh.edges = edges.reshape(-1, 8)
     mesh.faces = faces
@@ -183,9 +183,7 @@ def test_pearson_e2() -> None:
 
     bop = create_optimizer()
 
-    mesh_target = PbcMesh.periodic_voronoi_from_random_seeds(
-        nb_seeds=n_cells, width=width, height=height, random_key=1290
-    )
+    mesh_target = PbcMesh.from_random_seeds(nb_seeds=n_cells, width=width, height=height, random_key=1290)
 
     # Initial condition (parameters)
     mesh_target.vertices_params = jnp.asarray([0.0 for _ in range(mesh_target.nb_vertices)])

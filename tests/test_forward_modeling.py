@@ -27,7 +27,7 @@ def test_forward_modeling_for_regressions() -> None:
     L_box = jnp.sqrt(n_cells)
     width = float(L_box)
     height = float(L_box)
-    pbc_mesh = PbcMesh.periodic_voronoi_from_random_seeds(nb_seeds=n_cells, width=width, height=height, random_key=1)
+    pbc_mesh = PbcMesh.from_random_seeds(nb_seeds=n_cells, width=width, height=height, random_key=1)
     # A mesh is not only vertices, edges and faces. We can attach parameters to them.
     pbc_mesh.vertices_params = jnp.asarray([0.0])
     pbc_mesh.edges_params = jnp.asarray([0.0])

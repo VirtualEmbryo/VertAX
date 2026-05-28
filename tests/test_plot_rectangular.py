@@ -11,7 +11,7 @@ def show_rectangular_mesh() -> None:
     height = 10
 
     # Initial condition
-    mesh = PbcMesh.periodic_voronoi_from_random_seeds(n_cells, width, height, random_key=1)
+    mesh = PbcMesh.from_random_seeds(n_cells, width, height, random_key=1)
 
     plot_mesh(mesh)
 
