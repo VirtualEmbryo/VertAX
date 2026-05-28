@@ -4,7 +4,7 @@
 
 [![License: CC BY-SA](https://img.shields.io/badge/License-CC%20BY--SA-lightgrey.svg)](https://creativecommons.org/licenses/by-sa/4.0/)
 [![Python package index](https://img.shields.io/pypi/v/vertAX.svg)](https://pypi.org/project/vertAX)
-[![Documentation](https://img.shields.io/badge/documentation-green)](docs/vertax.html)
+[![Documentation](https://img.shields.io/badge/documentation-green)](https://html-preview.github.io/?url=https://github.com/VirtualEmbryo/VertAX/blob/main/docs/vertax.html)
 
 <!-- [![DOI](https://zenodo.org/badge/144513571.svg)](https://zenodo.org/badge/latestdoi/144513571) -->
 
@@ -178,7 +178,7 @@ See the [`examples/`](examples) folder for in-depth examples:
 
 ## API Reference
 
-See the [`docs/vertax.html`](documentation).
+See the [documentation](https://html-preview.github.io/?url=https://github.com/VirtualEmbryo/VertAX/blob/main/docs/vertax.html).
 
 ---
 
