@@ -81,7 +81,7 @@ def create_optimizer() -> PbcBilevelOptimizer:
     bop.patience = 5
     bop.inner_solver = optax.sgd(learning_rate=0.01)
     bop.outer_solver = optax.adam(learning_rate=0.0001, nesterov=True)
-    bop.bilevel_optimization_method = BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION
+    bop.bilevel_optimization_method = BilevelOptimizationMethod.ADJOINT_STATE
     bop.loss_function_outer = cost_v2v
     # bop.loss_function_outer = cost_v2v_ias
     return bop
