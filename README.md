@@ -4,6 +4,7 @@
 
 [![License: CC BY-SA](https://img.shields.io/badge/License-CC%20BY--SA-lightgrey.svg)](https://creativecommons.org/licenses/by-sa/4.0/)
 [![Python package index](https://img.shields.io/pypi/v/vertAX.svg)](https://pypi.org/project/vertAX)
+[![Documentation](https://img.shields.io/badge/documentation-green)](docs/vertax.html)
 
 <!-- [![DOI](https://zenodo.org/badge/144513571.svg)](https://zenodo.org/badge/latestdoi/144513571) -->
 
@@ -177,7 +178,7 @@ See the [`examples/`](examples) folder for in-depth examples:
 
 ## API Reference
 
-See the [`docs/`](docs) folder for the whole documentation.
+See the [`docs/vertax.html`](documentation).
 
 ---
 
@@ -265,6 +266,8 @@ For full inverse-modeling examples, see [Tutorials](#tutorials) section.
 
 If you use _VertAX_ in your research, please cite:
 
+```
+
 @misc{pasqui2026vertaxdifferentiablevertexmodel,
             title={VertAX: a differentiable vertex model for learning epithelial tissue mechanics},
             author={Alessandro Pasqui and Jim Martin Catacora Ocana and Anshuman Sinha and Matthieu Perez and Fabrice Delbary and Giorgio Gosti and Mattia Miotto and Domenico Caudo and Maxence Ernoult and Hervé Turlier},
@@ -274,6 +277,7 @@ If you use _VertAX_ in your research, please cite:
             primaryClass={cs.LG},
             url={<https://arxiv.org/abs/2604.06896}>,
 }
+```
 
 <!-- > Pasqui A., Catacora Ocana J.M., Sinha A., Perez M., Delbary F., Gosti G., Miotto M., Caudo D., Ruocco G., Ernoult M.\*, Turlier H.\* (2025). _VertAX: A Differentiable Vertex Model for Learning Epithelial Tissue Mechanics._ -->
 

@@ -199,8 +199,6 @@ def test_pearson_e2_t1() -> None:
 
     mesh_target.faces_params = jnp.asarray([1.0 for _ in range(mesh_target.nb_faces)])
 
-    he_params_reference = target_he_params[0]
-
     mesh = PbcMesh.copy_mesh(mesh_target)
     key = jax.random.PRNGKey(238487)  # change the seed for different results
     # base_he_params = target_he_params + std_tensions * jax.random.normal(key, shape=(mesh.nb_edges,))
@@ -232,12 +230,9 @@ def test_pearson_e2_t1() -> None:
             return hedge_part(he, he_param, vertTable, heTable, faceTable)
 
         areas_part = vmap(mapped_areas_part)(jnp.arange(len(faceTable)), face_params)
-        hedges_part = vmap(mapped_hedges_part)(jnp.arange(2, len(heTable)), he_params[2:])
-        return (
-            (2 * he_params_reference * get_length(0, vertTable, heTable, faceTable, width, height))
-            + jnp.sum(hedges_part)
-            + (0.5 * K_areas) * jnp.sum(areas_part)
-        )
+        hedges_part = vmap(mapped_hedges_part)(jnp.arange(len(heTable)), he_params)
+        soft_mean_part = (jnp.mean(he_params) - 1) ** 2
+        return jnp.sum(hedges_part) + (0.5 * K_areas) * jnp.sum(areas_part) + soft_mean_part
 
     # Energy minimization (init cond equilibrium)
     bop.loss_function_inner = energy
