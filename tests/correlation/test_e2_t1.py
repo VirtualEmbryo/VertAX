@@ -263,7 +263,7 @@ def test_pearson_e2_t1() -> None:
     bop.do_n_bilevel_optimization(
         nb_epochs,
         mesh,
-        report_every=100,
+        report_every=10,
         save_plotmesh_every=100,
         save_mesh_data_every=100,
         also_report_to_stdout=True,
@@ -313,10 +313,10 @@ def show_tensions() -> None:
 
 
 if __name__ == "__main__":
-    show_tensions()
-    # translate_base_mesh()
-    # translate_target_mesh()
-    # test_pearson_e2_t1()
+    # show_tensions()
+    translate_base_mesh()
+    translate_target_mesh()
+    test_pearson_e2_t1()
     # read_result()
     # _expected_result()
     # print(load_base_mesh().edges_params)

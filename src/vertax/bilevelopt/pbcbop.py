@@ -12,8 +12,6 @@ from vertax.opt import (
     outer_eq_prop,
     outer_implicit,
     outer_opt,
-    _build_t1_repair_perm,
-    _apply_perm_to_state,
 )
 from vertax.topo import do_not_update_T1, update_T1
 
@@ -119,7 +117,6 @@ class PbcBilevelOptimizer(_BilevelOptimizer):
             msg = "The update T1 method was not set by a boolean."
             raise AttributeError(msg)
         else:
-            old_edges = mesh.edges.copy()
             (mesh.vertices, mesh.edges, mesh.faces), loss_history = inner_opt(
                 vertTable=mesh.vertices,
                 heTable=mesh.edges,
@@ -140,10 +137,6 @@ class PbcBilevelOptimizer(_BilevelOptimizer):
                 selected_faces=only_on_faces,
                 update_t1_func=self._update_T1_func,
             )
-            perm = _build_t1_repair_perm(
-                mesh.vertices, self.vertices_target, old_edges, mesh.edges, mesh.width, mesh.height
-            )
-            mesh.vertices, mesh.edges = _apply_perm_to_state(perm, mesh.vertices, mesh.edges)
         return list(loss_history)
 
     def _outer_opt(
@@ -170,9 +163,6 @@ class PbcBilevelOptimizer(_BilevelOptimizer):
             match self.bilevel_optimization_method:
                 case BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION:
                     (
-                        mesh.vertices,
-                        mesh.edges,
-                        mesh.faces,
                         mesh.vertices_params,
                         mesh.edges_params,
                         mesh.faces_params,
@@ -205,9 +195,6 @@ class PbcBilevelOptimizer(_BilevelOptimizer):
 
                 case BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION:
                     (
-                        mesh.vertices,
-                        mesh.edges,
-                        mesh.faces,
                         mesh.vertices_params,
                         mesh.edges_params,
                         mesh.faces_params,
@@ -241,9 +228,6 @@ class PbcBilevelOptimizer(_BilevelOptimizer):
 
                 case BilevelOptimizationMethod.IMPLICIT_DIFFERENTIATION:
                     (
-                        mesh.vertices,
-                        mesh.edges,
-                        mesh.faces,
                         mesh.vertices_params,
                         mesh.edges_params,
                         mesh.faces_params,
@@ -276,9 +260,6 @@ class PbcBilevelOptimizer(_BilevelOptimizer):
 
                 case BilevelOptimizationMethod.ADJOINT_STATE:
                     (
-                        mesh.vertices,
-                        mesh.edges,
-                        mesh.faces,
                         mesh.vertices_params,
                         mesh.edges_params,
                         mesh.faces_params,

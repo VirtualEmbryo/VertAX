@@ -10,7 +10,7 @@ from typing import Any
 import jax.numpy as jnp
 import optax
 import pandas
-from jax import Array
+from jax import Array, lax
 
 from vertax.meshes.mesh import Mesh
 from vertax.meshes.plot import plot_mesh, save_simple_xy_graph
@@ -141,9 +141,20 @@ class _BilevelOptimizer:
             msg = "The inner function was not initialized."
             raise AttributeError(msg)
         else:
-            return self._inner_opt_func(
+            old_edges = mesh.edges.copy()  # Copy previous state to check for permutation later
+
+            loss_history = self._inner_opt_func(
                 mesh, *self._selection_to_jax_arrays(only_on_vertices, only_on_edges, only_on_faces)
             )
+
+            # Optional permutation test if T1 happened.
+            if self.vertices_target is not None and self.vertices_target.size > 0 and self.update_T1:
+                perm = _build_t1_repair_perm(
+                    mesh.vertices, self.vertices_target, old_edges, mesh.edges, mesh.width, mesh.height
+                )
+                mesh.vertices, mesh.edges = _apply_perm_to_state(perm, mesh.vertices, mesh.edges)
+
+            return loss_history
 
     def outer_optimization(
         self,
@@ -416,3 +427,84 @@ class _BilevelOptimizer:
         if only_on_faces is not None:
             selected_faces = jnp.array(only_on_faces)
         return selected_vertices, selected_edges, selected_faces
+
+
+def _periodic_sq_dist(p: Array, q: Array, width: float, height: float) -> Array:
+    """Squared distance under PBC between two 2D points (cols 0,1).
+
+    Mirrors `cost_v2v`'s convention: take the minimum over the 9 image shifts
+    (center + 8 surrounding sectors) of the target.
+    """
+    # TODO : abstract, make a PBC and bounded version
+    dx = p[0] - q[0]
+    dy = p[1] - q[1]
+    candidates = jnp.array(
+        [
+            dx * dx + dy * dy,
+            (dx - width) * (dx - width) + dy * dy,
+            (dx + width) * (dx + width) + dy * dy,
+            dx * dx + (dy - height) * (dy - height),
+            dx * dx + (dy + height) * (dy + height),
+            (dx - width) * (dx - width) + (dy - height) * (dy - height),
+            (dx - width) * (dx - width) + (dy + height) * (dy + height),
+            (dx + width) * (dx + width) + (dy - height) * (dy - height),
+            (dx + width) * (dx + width) + (dy + height) * (dy + height),
+        ]
+    )
+    return jnp.min(candidates)
+
+
+def _build_t1_repair_perm(
+    vertTable_after: Array,
+    vertTable_target: Array,
+    heTable_before: Array,
+    heTable_after: Array,
+    width: float,
+    height: float,
+) -> Array:
+    """Build a vertex-index permutation that swaps T1-flipped pairs when it lowers v2v cost.
+
+    A half-edge whose face index (col 5) changed across `inner_opt` was part of a T1: only
+    `update_T1` ever writes that column (`update_pbc` does not). For each such half-edge,
+    cols (3, 4) give the (a, b) vertex pair to test. Each T1 is reported twice (edge + twin);
+    the swap-only-if-better filter is idempotent, so duplicates are harmless.
+    """
+    perm = jnp.arange(vertTable_after.shape[0], dtype=jnp.int32)
+
+    t1_mask = heTable_before[:, 5] != heTable_after[:, 5]
+    # jax.debug.print("t1_mask = {x}", x=t1_mask.any(), ordered=True)
+    pair_a = heTable_before[:, 3].astype(jnp.int32)
+    pair_b = heTable_before[:, 4].astype(jnp.int32)
+
+    def body(i: int, perm: Array) -> Array:
+        a = pair_a[i]
+        b = pair_b[i]
+        ta = vertTable_target[perm[a]]
+        tb = vertTable_target[perm[b]]
+        pa = vertTable_after[a]
+        pb = vertTable_after[b]
+        cost_no_swap = _periodic_sq_dist(pa, ta, width, height) + _periodic_sq_dist(pb, tb, width, height)
+        cost_swap = _periodic_sq_dist(pa, tb, width, height) + _periodic_sq_dist(pb, ta, width, height)
+        do_swap = t1_mask[i] & (cost_swap < cost_no_swap)
+        new_a_val = jnp.where(do_swap, perm[b], perm[a])
+        new_b_val = jnp.where(do_swap, perm[a], perm[b])
+        return perm.at[a].set(new_a_val).at[b].set(new_b_val)
+
+    return lax.fori_loop(0, heTable_before.shape[0], body, perm)
+
+
+def _apply_perm_to_state(
+    perm: Array,
+    vertTable: Array,
+    heTable: Array,
+) -> tuple[Array, Array]:
+    """Reorder vertTable rows and relabel vertex indices stored in heTable cols 3, 4.
+
+    heTable cols 0, 1, 2, 5 reference half-edges/faces and are unaffected.
+    Self-canceling for any cost that reads positions by half-edge (only cost_v2v sees the swap).
+    """
+    new_vertTable = vertTable[perm]
+    src = perm[heTable[:, 3].astype(jnp.int32)].astype(heTable.dtype)
+    tgt = perm[heTable[:, 4].astype(jnp.int32)].astype(heTable.dtype)
+    new_heTable = heTable.at[:, 3].set(src).at[:, 4].set(tgt)
+    return new_vertTable, new_heTable
