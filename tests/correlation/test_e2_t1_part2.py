@@ -133,7 +133,7 @@ def test_pearson_e2_t1() -> None:
 
     he_params_reference = target_he_params[0]
 
-    mesh = PbcMesh.load_mesh("tests/correlation/results_part1/meshes_data/mesh_epoch_2500.npz")
+    mesh = PbcMesh.load_mesh("tests/correlation/results_part1/meshes_data/mesh_epoch_1500.npz")
 
     # Energy functions : Note that they use the width and height parameters now, defined earlier
     def area_part(face: Array, _face_param: Array, vertTable: Array, heTable: Array, faceTable: Array) -> Array:

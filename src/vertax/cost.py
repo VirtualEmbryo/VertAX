@@ -477,7 +477,7 @@ def cost_IAS(  # noqa: C901, N802
     _selected_faces: Array | None = None,
     _image_target: Array | None = None,
 ) -> Array:
-    r"""Differentiable IAS.
+    r"""Differentiable Index Aware Structural Loss. Force to respect the topology.
 
     C_{IAS}(i,j)   = \sqrt{\sum_{k=1}^{N} (S_1(i,k) - S_2(j,k))^2}
     """
@@ -645,7 +645,7 @@ def cost_d_IAS(  # noqa: N802
     _selected_faces: Array | None = None,
     _image_target: Array | None = None,
 ) -> int:
-    r"""d-IAS :- Counts mismatched edges.
+    r"""Discrete Index Aware Structural loss. Counts mismatched edges.
 
     C_{d-IAS}(i,j) = \sum_{k=1}^{N} |A_1(i,k) - A_2(j,k)|
     """
