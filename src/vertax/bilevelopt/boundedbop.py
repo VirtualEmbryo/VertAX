@@ -20,10 +20,13 @@ __all__ = ["BoundedBilevelOptimizer"]
 
 
 class BoundedBilevelOptimizer(_BilevelOptimizer):
-    """Bi-level optimizer for periodic boundary condition meshes."""
+    """Bi-level optimizer for bounded meshes (`BoundedMesh`)."""
 
     def __init__(self) -> None:
-        """Create a Bi-level optimizer for periodic boundary condition meshes with default parameters."""
+        """Create a Bi-level optimizer for bounded meshes with default parameters.
+
+        Does not set the inner and outer loss functions yet.
+        """
         super().__init__()
         self._inner_opt_func = self._inner_opt
         self._outer_opt_func = self._outer_opt

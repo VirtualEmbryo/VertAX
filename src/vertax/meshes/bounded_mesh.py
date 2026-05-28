@@ -1,4 +1,4 @@
-"""Bounded mesh with arc circles for boundary cells."""
+"""Bounded mesh are useful to represent finite tissue clusters with curved interfaces."""
 
 from __future__ import annotations
 
@@ -22,217 +22,42 @@ __all__ = ["BoundedMesh"]
 
 
 class BoundedMesh(Mesh):
-    """Bounded mesh with arc circles for boundary cells."""
+    """Bounded mesh with arc circles for boundary cells.
+
+    For a BoundedMesh, `vertices` is a 2D array of floats of size (nb_vertices, 2) ;
+    with the coordinates of the vertices (in ]0, width[ x ]0, height[ ).
+
+    `edges` is a  2D array of integers of size (nb_half_edges, 8), with:
+
+    - id of previous half-edge,
+    - id of next half-edge,
+    - id of twin half-edge,
+    - id of source vertex + 2 if current half-edge is an inside edge, else 0,
+    - id of target vertex + 2 if current half-edge is an inside edge, else 1,
+    - id of source vertex + 2 if current half-edge is an outside edge, else 0,
+    - id of target vertex + 2 if current half-edge is an outside edge, else 1,
+    - id of the face containing the half-edge.
+
+    `faces` is a 1D array of integers of size (nb_faces) containing the id of a half-edge belonging to this face.
+
+    `angles` is a 1D array of floats of size (nb_angles), with the angles sustaining the arcs of the free interfaces ;
+    between 0 and PI / 2.
+    """
 
     def __init__(self) -> None:
         """Do not call the constructor."""
         super().__init__()
         self.angles: Array = jnp.array([])
-
-    def save_mesh_txt(
-        self,
-        directory: str,
-        vertices_filename: str = "vertTable.txt",
-        angles_filename: str = "angTable.txt",
-        edges_filename: str = "heTable.txt",
-        faces_filename: str = "faceTable.txt",
-        vertices_params_filename: str = "vertParamsTable.txt",
-        edges_params_filename: str = "heParamsTable.txt",
-        faces_params_filename: str = "faceParamsTable.txt",
-        constants_filename: str = "constants.txt",
-    ) -> None:
-        """Save a mesh in separate text files that can be read by numpy.
-
-        Only save the vertices, angles, edges and faces, not other parameters.
-
-        Args:
-            directory (str): Path to the directory where to save the files.
-            vertices_filename (str, optional): Filename for the vertices table. Defaults to "vertTable.txt".
-            angles_filename (str, optional): Filename for the angles table. Defaults to "angTable.txt".
-            edges_filename (str, optional): Filename for the half-edges table. Defaults to "heTable.txt".
-            faces_filename (str, optional): Filename for the faces table. Defaults to "faceTable.txt".
-            vertices_params_filename (str, optional): Filename for the vertices parameters table.
-                    Defaults to "vertParamsTable.txt".
-            edges_params_filename (str, optional): Filename for the half-edges parameters table.
-                    Defaults to "heParamsTable.txt".
-            faces_params_filename (str, optional): Filename for the faces parameters table.
-                    Defaults to "faceParamsTable.txt".
-            constants_filename (str, optional): Filename for width/height.
-                    Defaults to "constants.txt".
-        """
-        dirpath = Path(directory)
-        dirpath.mkdir(parents=True, exist_ok=True)
-        np.savetxt(dirpath / vertices_filename, self.vertices)
-        np.savetxt(dirpath / angles_filename, self.angles)
-        np.savetxt(dirpath / edges_filename, self.edges)
-        np.savetxt(dirpath / faces_filename, self.faces)
-        np.savetxt(dirpath / vertices_params_filename, self.vertices_params)
-        np.savetxt(dirpath / edges_params_filename, self.edges_params)
-        np.savetxt(dirpath / faces_params_filename, self.faces_params)
-        with (dirpath / constants_filename).open("w") as f:
-            f.write(f"{self.width} {self.height}")
-
-    def save_mesh(self, path: str) -> None:
-        """Save mesh to a file.
-
-        All BoundedMesh data is saved.
-
-        Args:
-            path (str): Path to the saved file. The extension is .npz.
-        """
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(
-            path,
-            allow_pickle=False,
-            vertices=self.vertices,
-            edges=self.edges,
-            faces=self.faces,
-            angles=self.angles,
-            width=self.width,
-            height=self.height,
-            vertices_params=self.vertices_params,
-            edges_params=self.edges_params,
-            faces_params=self.faces_params,
-        )
-
-    @classmethod
-    def load_mesh(cls, path: str) -> Self:
-        """Load a mesh from a file.
-
-        All BoundedMesh data is reloaded.
-
-        Args:
-            path (str): Path to the mesh file (.npz).
-
-        Returns:
-            Mesh: the mesh loaded from the .npz file.
-        """
-        mesh_file = np.load(path)
-        mesh = cls._create()
-        mesh.vertices, mesh.edges, mesh.faces, mesh.angles = (
-            mesh_file["vertices"],
-            mesh_file["edges"],
-            mesh_file["faces"],
-            mesh_file["angles"],
-        )
-        mesh.width = mesh_file["width"]
-        mesh.height = mesh_file["height"]
-        mesh.vertices_params = mesh_file["vertices_params"]
-        mesh.edges_params = mesh_file["edges_params"]
-        mesh.faces_params = mesh_file["faces_params"]
-        return mesh
-
-    @classmethod
-    def load_mesh_txt(
-        cls,
-        directory: str,
-        vertices_filename: str = "vertTable.txt",
-        angles_filename: str = "angTable.txt",
-        edges_filename: str = "heTable.txt",
-        faces_filename: str = "faceTable.txt",
-        vertices_params_filename: str = "vertParamsTable.txt",
-        edges_params_filename: str = "heParamsTable.txt",
-        faces_params_filename: str = "faceParamsTable.txt",
-        constants_filename: str = "constants.txt",
-    ) -> Self:
-        """Load a mesh from text files.
-
-        Only load the vertices, angles, edges and faces, not other parameters.
-
-        Args:
-            directory (str): Directory where the text files are stored.
-            vertices_filename (str, optional): Filename for the vertices table. Defaults to "vertTable.txt".
-            angles_filename (str, optional): Filename for the angles table. Defaults to "angTable.txt".
-            edges_filename (str, optional): Filename for the half-edges table. Defaults to "heTable.txt".
-            faces_filename (str, optional): Filename for the faces table. Defaults to "faceTable.txt".
-            vertices_params_filename (str, optional): Filename for the vertices parameters table.
-                    Defaults to "vertParamsTable.txt".
-            edges_params_filename (str, optional): Filename for the half-edges parameters table.
-                    Defaults to "heParamsTable.txt".
-            faces_params_filename (str, optional): Filename for the faces parameters table.
-                    Defaults to "faceParamsTable.txt".
-            constants_filename (str, optional): Filename for width/height/MAX_EDGES_IN_ANY_FACE.
-                    Defaults to "constants.txt".
-
-        Returns:
-            Self: The loaded mesh.
-        """
-        dirpath = Path(directory)
-        dirpath.mkdir(parents=True, exist_ok=True)
-
-        mesh = cls._create()
-        mesh.vertices = jnp.array(np.loadtxt(dirpath / vertices_filename, dtype=np.float64))
-        mesh.angles = jnp.array(np.loadtxt(dirpath / angles_filename, dtype=np.float64))
-        mesh.edges = jnp.array(np.loadtxt(dirpath / edges_filename, dtype=np.int64))
-        mesh.faces = jnp.array(np.loadtxt(dirpath / faces_filename, dtype=np.int64))
-        mesh.vertices_params = jnp.array(np.loadtxt(dirpath / vertices_params_filename, dtype=np.float64))
-        mesh.edges_params = jnp.array(np.loadtxt(dirpath / edges_params_filename, dtype=np.int64))
-        mesh.faces_params = jnp.array(np.loadtxt(dirpath / faces_params_filename, dtype=np.int64))
-        with (dirpath / constants_filename).open("r") as f:
-            numbers = f.readline().split()
-            mesh.width = float(numbers[0])
-            mesh.height = float(numbers[1])
-        return mesh
-
-    @classmethod
-    def copy_mesh(cls, other_mesh: Self) -> Self:
-        """Copy all parameters from another mesh in a new mesh."""
-        mesh = cls._create()
-        mesh.vertices = other_mesh.vertices.copy()
-        mesh.edges = other_mesh.edges.copy()
-        mesh.faces = other_mesh.faces.copy()
-        mesh.angles = other_mesh.angles.copy()
-        mesh.width = other_mesh.width
-        mesh.height = other_mesh.height
-        mesh.vertices_params = other_mesh.vertices_params.copy()
-        mesh.edges_params = other_mesh.edges_params.copy()
-        mesh.faces_params = other_mesh.faces_params.copy()
-
-        return mesh
+        """Angle sustaining the arced free interfaces. Between 0 and PI / 2."""
 
     @property
     def nb_angles(self) -> int:
-        """Get the number of angles of the mesh."""
+        """Get the number of angles (free interfaces) of the mesh."""
         return len(self.angles)
-
-    def get_length(self, half_edge_id: Array) -> Array:
-        """Get the length of an edge."""
-        vertTable = jnp.vstack([jnp.array([[0.0, 0.0], [1.0, 1.0]]), self.vertices])
-        angTable = jnp.repeat(self.angles, 2)
-
-        def _get_length(half_edge_id: Array) -> Array:
-            return get_any_length(half_edge_id, vertTable, angTable, self.edges)
-
-        return jax.vmap(_get_length)(half_edge_id)
-
-    def get_perimeter(self, face_id: Array) -> Array:
-        """Get the area of a face."""
-        vertTable = jnp.vstack([jnp.array([[0.0, 0.0], [1.0, 1.0]]), self.vertices])
-        angTable = jnp.repeat(self.angles, 2)
-
-        def _get_perimeter(face_id: Array) -> Array:
-            return get_perimeter_bounded(face_id, vertTable, angTable, self.edges, self.faces)
-
-        return jax.vmap(_get_perimeter)(face_id)
-
-    def get_area(self, face_id: Array) -> Array:
-        """Get the area of a face."""
-        vertTable = jnp.vstack([jnp.array([[0.0, 0.0], [1.0, 1.0]]), self.vertices])
-        angTable = jnp.repeat(self.angles, 2)
-
-        def _get_area(face_id: Array) -> Array:
-            return get_area_bounded(face_id, vertTable, angTable, self.edges, self.faces)
-
-        return jax.vmap(_get_area)(face_id)
-
-    @classmethod
-    def create_empty(cls) -> Self:
-        """Return an empty mesh."""
-        return cls._create()
 
     @classmethod
     def from_random_seeds(cls, nb_seeds: int, width: float, height: float, random_key: int, nb_fates: int = 2) -> Self:
-        """Create a bounded Mesh from random seeds.
+        """Create a bounded Mesh from random seeds, based on a Voronoi diagram with arced free interfaces.
 
         Args:
             nb_seeds (int): Number of random seeds to use.
@@ -250,7 +75,7 @@ class BoundedMesh(Mesh):
 
     @classmethod
     def from_seeds(cls, seeds: NDArray, width: float, height: float, random_key: int, nb_fates: int = 2) -> Self:  # noqa: C901
-        """Create a bounded Mesh from a list of seeds.
+        """Create a bounded Mesh from a list of given seeds.
 
         The seeds are assumed to have x-coordinate in ]0, width[ and y-coordinate in ]0, height[.
         Note that the final mesh might not use your seeds if they don't work to create a correct
@@ -489,6 +314,202 @@ class BoundedMesh(Mesh):
                 if success == 1
                 else (width, height) * rng.random((n_cells, 2))
             )  # type: ignore
+
+    @classmethod
+    def create_empty(cls) -> Self:
+        """Create an empty mesh. Use if you know what you're doing !"""
+        return cls._create()
+
+    @classmethod
+    def copy_mesh(cls, other_mesh: Self) -> Self:
+        """Copy all parameters from another mesh in a new mesh."""
+        mesh = cls._create()
+        mesh.vertices = other_mesh.vertices.copy()
+        mesh.edges = other_mesh.edges.copy()
+        mesh.faces = other_mesh.faces.copy()
+        mesh.angles = other_mesh.angles.copy()
+        mesh.width = other_mesh.width
+        mesh.height = other_mesh.height
+        mesh.vertices_params = other_mesh.vertices_params.copy()
+        mesh.edges_params = other_mesh.edges_params.copy()
+        mesh.faces_params = other_mesh.faces_params.copy()
+
+        return mesh
+
+    def save_mesh(self, path: str) -> None:
+        """Save mesh to a file.
+
+        All BoundedMesh data is saved.
+
+        Args:
+            path (str): Path to the saved file. The extension is .npz.
+        """
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            path,
+            allow_pickle=False,
+            vertices=self.vertices,
+            edges=self.edges,
+            faces=self.faces,
+            angles=self.angles,
+            width=self.width,
+            height=self.height,
+            vertices_params=self.vertices_params,
+            edges_params=self.edges_params,
+            faces_params=self.faces_params,
+        )
+
+    @classmethod
+    def load_mesh(cls, path: str) -> Self:
+        """Load a mesh from a file.
+
+        All BoundedMesh data is reloaded.
+
+        Args:
+            path (str): Path to the mesh file (.npz).
+
+        Returns:
+            Mesh: the mesh loaded from the .npz file.
+        """
+        mesh_file = np.load(path)
+        mesh = cls._create()
+        mesh.vertices, mesh.edges, mesh.faces, mesh.angles = (
+            mesh_file["vertices"],
+            mesh_file["edges"],
+            mesh_file["faces"],
+            mesh_file["angles"],
+        )
+        mesh.width = mesh_file["width"]
+        mesh.height = mesh_file["height"]
+        mesh.vertices_params = mesh_file["vertices_params"]
+        mesh.edges_params = mesh_file["edges_params"]
+        mesh.faces_params = mesh_file["faces_params"]
+        return mesh
+
+    def save_mesh_txt(
+        self,
+        directory: str,
+        vertices_filename: str = "vertTable.txt",
+        angles_filename: str = "angTable.txt",
+        edges_filename: str = "heTable.txt",
+        faces_filename: str = "faceTable.txt",
+        vertices_params_filename: str = "vertParamsTable.txt",
+        edges_params_filename: str = "heParamsTable.txt",
+        faces_params_filename: str = "faceParamsTable.txt",
+        constants_filename: str = "constants.txt",
+    ) -> None:
+        """Save a mesh in separate text files that can be read by numpy.
+
+        Only save the vertices, angles, edges and faces, not other parameters.
+
+        Args:
+            directory (str): Path to the directory where to save the files.
+            vertices_filename (str, optional): Filename for the vertices table. Defaults to "vertTable.txt".
+            angles_filename (str, optional): Filename for the angles table. Defaults to "angTable.txt".
+            edges_filename (str, optional): Filename for the half-edges table. Defaults to "heTable.txt".
+            faces_filename (str, optional): Filename for the faces table. Defaults to "faceTable.txt".
+            vertices_params_filename (str, optional): Filename for the vertices parameters table.
+                    Defaults to "vertParamsTable.txt".
+            edges_params_filename (str, optional): Filename for the half-edges parameters table.
+                    Defaults to "heParamsTable.txt".
+            faces_params_filename (str, optional): Filename for the faces parameters table.
+                    Defaults to "faceParamsTable.txt".
+            constants_filename (str, optional): Filename for width/height.
+                    Defaults to "constants.txt".
+        """
+        dirpath = Path(directory)
+        dirpath.mkdir(parents=True, exist_ok=True)
+        np.savetxt(dirpath / vertices_filename, self.vertices)
+        np.savetxt(dirpath / angles_filename, self.angles)
+        np.savetxt(dirpath / edges_filename, self.edges)
+        np.savetxt(dirpath / faces_filename, self.faces)
+        np.savetxt(dirpath / vertices_params_filename, self.vertices_params)
+        np.savetxt(dirpath / edges_params_filename, self.edges_params)
+        np.savetxt(dirpath / faces_params_filename, self.faces_params)
+        with (dirpath / constants_filename).open("w") as f:
+            f.write(f"{self.width} {self.height}")
+
+    @classmethod
+    def load_mesh_txt(
+        cls,
+        directory: str,
+        vertices_filename: str = "vertTable.txt",
+        angles_filename: str = "angTable.txt",
+        edges_filename: str = "heTable.txt",
+        faces_filename: str = "faceTable.txt",
+        vertices_params_filename: str = "vertParamsTable.txt",
+        edges_params_filename: str = "heParamsTable.txt",
+        faces_params_filename: str = "faceParamsTable.txt",
+        constants_filename: str = "constants.txt",
+    ) -> Self:
+        """Load a mesh from text files.
+
+        Only load the vertices, angles, edges and faces, not other parameters.
+
+        Args:
+            directory (str): Directory where the text files are stored.
+            vertices_filename (str, optional): Filename for the vertices table. Defaults to "vertTable.txt".
+            angles_filename (str, optional): Filename for the angles table. Defaults to "angTable.txt".
+            edges_filename (str, optional): Filename for the half-edges table. Defaults to "heTable.txt".
+            faces_filename (str, optional): Filename for the faces table. Defaults to "faceTable.txt".
+            vertices_params_filename (str, optional): Filename for the vertices parameters table.
+                    Defaults to "vertParamsTable.txt".
+            edges_params_filename (str, optional): Filename for the half-edges parameters table.
+                    Defaults to "heParamsTable.txt".
+            faces_params_filename (str, optional): Filename for the faces parameters table.
+                    Defaults to "faceParamsTable.txt".
+            constants_filename (str, optional): Filename for width/height/MAX_EDGES_IN_ANY_FACE.
+                    Defaults to "constants.txt".
+
+        Returns:
+            Self: The loaded mesh.
+        """
+        dirpath = Path(directory)
+        dirpath.mkdir(parents=True, exist_ok=True)
+
+        mesh = cls._create()
+        mesh.vertices = jnp.array(np.loadtxt(dirpath / vertices_filename, dtype=np.float64))
+        mesh.angles = jnp.array(np.loadtxt(dirpath / angles_filename, dtype=np.float64))
+        mesh.edges = jnp.array(np.loadtxt(dirpath / edges_filename, dtype=np.int64))
+        mesh.faces = jnp.array(np.loadtxt(dirpath / faces_filename, dtype=np.int64))
+        mesh.vertices_params = jnp.array(np.loadtxt(dirpath / vertices_params_filename, dtype=np.float64))
+        mesh.edges_params = jnp.array(np.loadtxt(dirpath / edges_params_filename, dtype=np.int64))
+        mesh.faces_params = jnp.array(np.loadtxt(dirpath / faces_params_filename, dtype=np.int64))
+        with (dirpath / constants_filename).open("r") as f:
+            numbers = f.readline().split()
+            mesh.width = float(numbers[0])
+            mesh.height = float(numbers[1])
+        return mesh
+
+    def get_length(self, half_edge_id: Array) -> Array:
+        """Get the length of an edge."""
+        vertTable = jnp.vstack([jnp.array([[0.0, 0.0], [1.0, 1.0]]), self.vertices])
+        angTable = jnp.repeat(self.angles, 2)
+
+        def _get_length(half_edge_id: Array) -> Array:
+            return get_any_length(half_edge_id, vertTable, angTable, self.edges)
+
+        return jax.vmap(_get_length)(half_edge_id)
+
+    def get_perimeter(self, face_id: Array) -> Array:
+        """Get the area of a face."""
+        vertTable = jnp.vstack([jnp.array([[0.0, 0.0], [1.0, 1.0]]), self.vertices])
+        angTable = jnp.repeat(self.angles, 2)
+
+        def _get_perimeter(face_id: Array) -> Array:
+            return get_perimeter_bounded(face_id, vertTable, angTable, self.edges, self.faces)
+
+        return jax.vmap(_get_perimeter)(face_id)
+
+    def get_area(self, face_id: Array) -> Array:
+        """Get the area of a face."""
+        vertTable = jnp.vstack([jnp.array([[0.0, 0.0], [1.0, 1.0]]), self.vertices])
+        angTable = jnp.repeat(self.angles, 2)
+
+        def _get_area(face_id: Array) -> Array:
+            return get_area_bounded(face_id, vertTable, angTable, self.edges, self.faces)
+
+        return jax.vmap(_get_area)(face_id)
 
 
 def _fate_selection(faceTable: NDArray, n_fates: int, rng: Generator) -> NDArray:

@@ -1,4 +1,4 @@
-"""Periodic Boundary Condition on a mesh."""
+"""Periodic Boundary Condition on a mesh, useful for bulk tissue dynamics with no explicit boundaries."""
 
 from pathlib import Path
 from typing import Self
@@ -18,219 +18,42 @@ __all__ = ["PbcMesh"]
 
 
 class PbcMesh(Mesh):
-    """Periodic Boundary Condition on a mesh."""
+    """Periodic Boundary Condition on a mesh.
+
+    For a PbcMesh, `vertices` is a 2D array of floats of size (nb_vertices, 2) ;
+    with the coordinates of the vertices (in ]0, width[ x ]0, height[ ).
+
+    `edges` is a  2D array of integers of size (nb_half_edges, 8), with:
+
+    - id of previous half-edge,
+    - id of next half-edge,
+    - id of twin half-edge,
+    - id of source vertex,
+    - id of target vertex,
+    - id of the face containing the half-edge.
+    - x-offset (either -1, 0 or 1) depending on the target vertex crossing a boundary.
+    - y-offset (either -1, 0 or 1) depending on the target vertex crossing a boundary.
+
+    `faces` is a 1D array of integers of size (nb_faces) containing the id of a half-edge belonging to this face.
+    """
 
     def __init__(self) -> None:
-        """Do not call the constructor."""
+        """Do not call the constructor directly, use the dedicated class methods such as:
+
+        - `from_random_seeds`,
+        - `from_seeds`,
+        - `from_image`,
+        - `from_mask`,
+        - `create_empty`.
+        """  # noqa: D415
         super().__init__()
 
         self.MAX_EDGES_IN_ANY_FACE: int = 20
-
-    @classmethod
-    def copy_mesh(cls, other_mesh: Self) -> Self:
-        """Copy all parameters from another mesh in a new mesh."""
-        mesh = cls._create()
-        mesh.vertices = other_mesh.vertices.copy()
-        mesh.edges = other_mesh.edges.copy()
-        mesh.faces = other_mesh.faces.copy()
-        mesh.width = other_mesh.width
-        mesh.height = other_mesh.height
-        mesh.vertices_params = other_mesh.vertices_params.copy()
-        mesh.edges_params = other_mesh.edges_params.copy()
-        mesh.faces_params = other_mesh.faces_params.copy()
-        mesh.MAX_EDGES_IN_ANY_FACE = other_mesh.MAX_EDGES_IN_ANY_FACE
-
-        return mesh
-
-    def save_mesh_txt(
-        self,
-        directory: str,
-        vertices_filename: str = "vertTable.txt",
-        edges_filename: str = "heTable.txt",
-        faces_filename: str = "faceTable.txt",
-        vertices_params_filename: str = "vertParamsTable.txt",
-        edges_params_filename: str = "heParamsTable.txt",
-        faces_params_filename: str = "faceParamsTable.txt",
-        constants_filename: str = "constants.txt",
-    ) -> None:
-        """Save a mesh in separate text files that can be read by numpy.
-
-        Only save the vertices, edges and faces, not other parameters.
-
-        Args:
-            directory (str): Path to the directory where to save the files.
-            vertices_filename (str, optional): Filename for the vertices table. Defaults to "vertTable.txt".
-            edges_filename (str, optional): Filename for the half-edges table. Defaults to "heTable.txt".
-            faces_filename (str, optional): Filename for the faces table. Defaults to "faceTable.txt".
-            vertices_params_filename (str, optional): Filename for the vertices parameters table.
-                    Defaults to "vertParamsTable.txt".
-            edges_params_filename (str, optional): Filename for the half-edges parameters table.
-                    Defaults to "heParamsTable.txt".
-            faces_params_filename (str, optional): Filename for the faces parameters table.
-                    Defaults to "faceParamsTable.txt".
-            constants_filename (str, optional): Filename for width/height/MAX_EDGES_IN_ANY_FACE.
-                    Defaults to "constants.txt".
-        """
-        dirpath = Path(directory)
-        dirpath.mkdir(parents=True, exist_ok=True)
-        np.savetxt(dirpath / vertices_filename, self.vertices)
-        np.savetxt(dirpath / edges_filename, self.edges)
-        np.savetxt(dirpath / faces_filename, self.faces)
-        np.savetxt(dirpath / vertices_params_filename, self.vertices_params)
-        np.savetxt(dirpath / edges_params_filename, self.edges_params)
-        np.savetxt(dirpath / faces_params_filename, self.faces_params)
-        with (dirpath / constants_filename).open("w") as f:
-            f.write(f"{self.width} {self.height} {self.MAX_EDGES_IN_ANY_FACE}")
-
-    def save_mesh(self, path: str) -> None:
-        """Save mesh to a file.
-
-        All PBCMesh data is saved.
-
-        Args:
-            path (str): Path to the saved file. The extension is .npz, a numpy format.
-        """
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(
-            path,
-            allow_pickle=False,
-            vertices=self.vertices,
-            edges=self.edges,
-            faces=self.faces,
-            width=self.width,
-            height=self.height,
-            vertices_params=self.vertices_params,
-            edges_params=self.edges_params,
-            faces_params=self.faces_params,
-            MAX_EDGES_IN_ANY_FACE=self.MAX_EDGES_IN_ANY_FACE,
-        )
-
-    @classmethod
-    def load_mesh(cls, path: str) -> Self:
-        """Load a mesh from a file.
-
-        All PBCMesh data is reloaded.
-
-        Args:
-            path (str): Path to the mesh file (.npz), numpy format.
-
-        Returns:
-            Mesh: the mesh loaded from the numpy .npz file.
-        """
-        mesh_file = np.load(path)
-        mesh = cls._create()
-        mesh.vertices, mesh.edges, mesh.faces = (
-            jnp.array(mesh_file["vertices"]),
-            jnp.array(mesh_file["edges"].reshape(-1, 8)),
-            jnp.array(mesh_file["faces"]),
-        )
-        mesh.width, mesh.height = float(mesh_file["width"]), float(mesh_file["height"])
-        mesh.vertices_params = jnp.array(mesh_file["vertices_params"])
-        mesh.edges_params = jnp.array(mesh_file["edges_params"])
-        mesh.faces_params = jnp.array(mesh_file["faces_params"])
-        mesh.MAX_EDGES_IN_ANY_FACE = mesh_file["MAX_EDGES_IN_ANY_FACE"]
-        return mesh
-
-    @classmethod
-    def load_mesh_txt(
-        cls,
-        directory: str,
-        vertices_filename: str = "vertTable.txt",
-        edges_filename: str = "heTable.txt",
-        faces_filename: str = "faceTable.txt",
-        vertices_params_filename: str = "vertParamsTable.txt",
-        edges_params_filename: str = "heParamsTable.txt",
-        faces_params_filename: str = "faceParamsTable.txt",
-        constants_filename: str = "constants.txt",
-    ) -> Self:
-        """Load a mesh from text files.
-
-        Only load the vertices, edges and faces, not other parameters.
-
-        Args:
-            directory (str): Directory where the text files are stored.
-            vertices_filename (str, optional): Filename for the vertices table. Defaults to "vertTable.txt".
-            edges_filename (str, optional): Filename for the half-edges table. Defaults to "heTable.txt".
-            faces_filename (str, optional): Filename for the faces table. Defaults to "faceTable.txt".
-            vertices_params_filename (str, optional): Filename for the vertices parameters table.
-                    Defaults to "vertParamsTable.txt".
-            edges_params_filename (str, optional): Filename for the half-edges parameters table.
-                    Defaults to "heParamsTable.txt".
-            faces_params_filename (str, optional): Filename for the faces parameters table.
-                    Defaults to "faceParamsTable.txt".
-            constants_filename (str, optional): Filename for width/height/MAX_EDGES_IN_ANY_FACE.
-                    Defaults to "constants.txt".
-
-        Returns:
-            Self: The loaded mesh.
-        """
-        dirpath = Path(directory)
-        dirpath.mkdir(parents=True, exist_ok=True)
-
-        mesh = cls._create()
-        mesh.vertices = jnp.array(np.loadtxt(dirpath / vertices_filename, dtype=np.float64))
-        mesh.edges = jnp.array(np.loadtxt(dirpath / edges_filename, dtype=np.int64))
-        mesh.faces = jnp.array(np.loadtxt(dirpath / faces_filename, dtype=np.int64))
-        mesh.vertices_params = jnp.array(np.loadtxt(dirpath / vertices_params_filename, dtype=np.float64))
-        mesh.edges_params = jnp.array(np.loadtxt(dirpath / edges_params_filename, dtype=np.int64))
-        mesh.faces_params = jnp.array(np.loadtxt(dirpath / faces_params_filename, dtype=np.int64))
-        with (dirpath / constants_filename).open("r") as f:
-            numbers = f.readline().split()
-            mesh.width = float(numbers[0])
-            mesh.height = float(numbers[1])
-            mesh.MAX_EDGES_IN_ANY_FACE = int(numbers[2])
-        return mesh
-
-    def get_length(self, half_edge_id: Array) -> Array:
-        """Get the length of an edge."""
-
-        def _get_length(half_edge_id: Array) -> Array:
-            return get_length(half_edge_id, self.vertices, self.edges, self.faces, self.width, self.height)
-
-        return jax.vmap(_get_length)(half_edge_id)
-
-    def get_length_with_offset(self, half_edge_id: Array) -> Array:
-        """Get the length of an edge along with its offsets in an array (length, offset x, offset y)."""
-
-        def _get_length_with_offset(half_edge_id: Array) -> Array:
-            return get_length_with_offset(half_edge_id, self.vertices, self.edges, self.faces, self.width, self.height)
-
-        return jax.vmap(_get_length_with_offset)(half_edge_id)
-
-    def get_perimeter(self, face_id: Array) -> Array:
-        """Get the perimeter of a face."""
-
-        def _get_perimeter(face_id: Array) -> Array:
-            return get_perimeter(
-                face_id, self.vertices, self.edges, self.faces, self.width, self.height, self.MAX_EDGES_IN_ANY_FACE
-            )
-
-        return jax.vmap(_get_perimeter)(face_id)
-
-    def get_area(self, face_id: Array) -> Array:
-        """Get the area of a face."""
-
-        def _get_area(face_id: Array) -> Array:
-            return get_area(
-                face_id, self.vertices, self.edges, self.faces, self.width, self.height, self.MAX_EDGES_IN_ANY_FACE
-            )
-
-        return jax.vmap(_get_area)(face_id)
-
-    def update_boundary_conditions(self) -> None:
-        """Force periodic boundary conditions again after an update."""
-        self.vertices, self.edges, self.faces = update_pbc(
-            self.vertices, self.edges, self.faces, self.width, self.height
-        )
-
-    @classmethod
-    def create_empty(cls) -> Self:
-        """Return an empty mesh."""
-        return cls._create()
+        """Optimization parameter : must be more than the estimated maximum number of edges in a face. Base value is 20."""  # noqa: E501
 
     @classmethod
     def from_random_seeds(cls, nb_seeds: int, width: float, height: float, random_key: int) -> Self:
-        """Create a Periodic Voronoi Mesh from random seeds.
+        """Create a Periodic Boundary Conditions Mesh from a Voronoi diagram based on random seeds.
 
         Args:
             nb_seeds (int): Number of random seeds to use.
@@ -247,7 +70,7 @@ class PbcMesh(Mesh):
 
     @classmethod
     def from_seeds(cls, seeds: Array, width: float, height: float) -> Self:
-        """Create a Periodic Voronoi Mesh from a list of seeds.
+        """Create a Periodic Boundary Conditions Mesh from a Voronoi diagram based on a list of seeds.
 
         The seeds are assumed to have positive x and y positions.
 
@@ -294,11 +117,13 @@ class PbcMesh(Mesh):
         The result will probably be imperfect and it will always be better if you
         provide directly a mask (with no holes) with the function "periodic_from_mask".
 
+        The mask is made periodic by mirroring its edges.
+
         Args:
             image (NDArray): The image which will act as a template for the mesh.
 
         Returns:
-            tuple[Array, Array, Array]:  The vertices, half-edges and faces table of the mesh.
+            Self: The corresponding mesh.
         """
         return cls.from_mask(mask_from_image(image))
 
@@ -309,11 +134,13 @@ class PbcMesh(Mesh):
     ) -> Self:
         """Create a rudimentary mesh with periodic boundary conditions from a mask with no holes.
 
+        The mask is made periodic by mirroring its edges.
+
         Args:
             mask (NDArray): The mask with no holes which will act as a template for the mesh.
 
         Returns:
-            tuple[Array, Array, Array]:  The vertices, half-edges and faces table of the mesh.
+            Self: The corresponding mesh.
         """
         padded_mask = pad(mask, save=False, output_path="refined_and_padded_image.tiff")
         # Find vertices, edges, faces
@@ -449,6 +276,211 @@ class PbcMesh(Mesh):
         pbc_mesh.height = 2 * height
 
         return pbc_mesh
+
+    @classmethod
+    def create_empty(cls) -> Self:
+        """Create an empty mesh. Use if you know what you're doing !"""
+        return cls._create()
+
+    @classmethod
+    def copy_mesh(cls, other_mesh: Self) -> Self:
+        """Copy all parameters from another mesh in a new mesh."""
+        mesh = cls._create()
+        mesh.vertices = other_mesh.vertices.copy()
+        mesh.edges = other_mesh.edges.copy()
+        mesh.faces = other_mesh.faces.copy()
+        mesh.width = other_mesh.width
+        mesh.height = other_mesh.height
+        mesh.vertices_params = other_mesh.vertices_params.copy()
+        mesh.edges_params = other_mesh.edges_params.copy()
+        mesh.faces_params = other_mesh.faces_params.copy()
+        mesh.MAX_EDGES_IN_ANY_FACE = other_mesh.MAX_EDGES_IN_ANY_FACE
+
+        return mesh
+
+    def save_mesh(self, path: str) -> None:
+        """Save mesh to a file.
+
+        All PBCMesh data is saved.
+
+        Args:
+            path (str): Path to the saved file. The extension is .npz, a numpy format.
+        """
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            path,
+            allow_pickle=False,
+            vertices=self.vertices,
+            edges=self.edges,
+            faces=self.faces,
+            width=self.width,
+            height=self.height,
+            vertices_params=self.vertices_params,
+            edges_params=self.edges_params,
+            faces_params=self.faces_params,
+            MAX_EDGES_IN_ANY_FACE=self.MAX_EDGES_IN_ANY_FACE,
+        )
+
+    @classmethod
+    def load_mesh(cls, path: str) -> Self:
+        """Load a mesh from a file.
+
+        All PBCMesh data is reloaded.
+
+        Args:
+            path (str): Path to the mesh file (.npz), numpy format.
+
+        Returns:
+            Mesh: the mesh loaded from the numpy .npz file.
+        """
+        mesh_file = np.load(path)
+        mesh = cls._create()
+        mesh.vertices, mesh.edges, mesh.faces = (
+            jnp.array(mesh_file["vertices"]),
+            jnp.array(mesh_file["edges"].reshape(-1, 8)),
+            jnp.array(mesh_file["faces"]),
+        )
+        mesh.width, mesh.height = float(mesh_file["width"]), float(mesh_file["height"])
+        mesh.vertices_params = jnp.array(mesh_file["vertices_params"])
+        mesh.edges_params = jnp.array(mesh_file["edges_params"])
+        mesh.faces_params = jnp.array(mesh_file["faces_params"])
+        mesh.MAX_EDGES_IN_ANY_FACE = mesh_file["MAX_EDGES_IN_ANY_FACE"]
+        return mesh
+
+    def save_mesh_txt(
+        self,
+        directory: str,
+        vertices_filename: str = "vertTable.txt",
+        edges_filename: str = "heTable.txt",
+        faces_filename: str = "faceTable.txt",
+        vertices_params_filename: str = "vertParamsTable.txt",
+        edges_params_filename: str = "heParamsTable.txt",
+        faces_params_filename: str = "faceParamsTable.txt",
+        constants_filename: str = "constants.txt",
+    ) -> None:
+        """Save a mesh in separate text files that can be read by numpy.
+
+        Only save the vertices, edges and faces, not other parameters.
+
+        Args:
+            directory (str): Path to the directory where to save the files.
+            vertices_filename (str, optional): Filename for the vertices table. Defaults to "vertTable.txt".
+            edges_filename (str, optional): Filename for the half-edges table. Defaults to "heTable.txt".
+            faces_filename (str, optional): Filename for the faces table. Defaults to "faceTable.txt".
+            vertices_params_filename (str, optional): Filename for the vertices parameters table.
+                    Defaults to "vertParamsTable.txt".
+            edges_params_filename (str, optional): Filename for the half-edges parameters table.
+                    Defaults to "heParamsTable.txt".
+            faces_params_filename (str, optional): Filename for the faces parameters table.
+                    Defaults to "faceParamsTable.txt".
+            constants_filename (str, optional): Filename for width/height/MAX_EDGES_IN_ANY_FACE.
+                    Defaults to "constants.txt".
+        """
+        dirpath = Path(directory)
+        dirpath.mkdir(parents=True, exist_ok=True)
+        np.savetxt(dirpath / vertices_filename, self.vertices)
+        np.savetxt(dirpath / edges_filename, self.edges)
+        np.savetxt(dirpath / faces_filename, self.faces)
+        np.savetxt(dirpath / vertices_params_filename, self.vertices_params)
+        np.savetxt(dirpath / edges_params_filename, self.edges_params)
+        np.savetxt(dirpath / faces_params_filename, self.faces_params)
+        with (dirpath / constants_filename).open("w") as f:
+            f.write(f"{self.width} {self.height} {self.MAX_EDGES_IN_ANY_FACE}")
+
+    @classmethod
+    def load_mesh_txt(
+        cls,
+        directory: str,
+        vertices_filename: str = "vertTable.txt",
+        edges_filename: str = "heTable.txt",
+        faces_filename: str = "faceTable.txt",
+        vertices_params_filename: str = "vertParamsTable.txt",
+        edges_params_filename: str = "heParamsTable.txt",
+        faces_params_filename: str = "faceParamsTable.txt",
+        constants_filename: str = "constants.txt",
+    ) -> Self:
+        """Load a mesh from text files.
+
+        Only load the vertices, edges and faces, not other parameters.
+
+        Args:
+            directory (str): Directory where the text files are stored.
+            vertices_filename (str, optional): Filename for the vertices table. Defaults to "vertTable.txt".
+            edges_filename (str, optional): Filename for the half-edges table. Defaults to "heTable.txt".
+            faces_filename (str, optional): Filename for the faces table. Defaults to "faceTable.txt".
+            vertices_params_filename (str, optional): Filename for the vertices parameters table.
+                    Defaults to "vertParamsTable.txt".
+            edges_params_filename (str, optional): Filename for the half-edges parameters table.
+                    Defaults to "heParamsTable.txt".
+            faces_params_filename (str, optional): Filename for the faces parameters table.
+                    Defaults to "faceParamsTable.txt".
+            constants_filename (str, optional): Filename for width/height/MAX_EDGES_IN_ANY_FACE.
+                    Defaults to "constants.txt".
+
+        Returns:
+            Self: The loaded mesh.
+        """
+        dirpath = Path(directory)
+        dirpath.mkdir(parents=True, exist_ok=True)
+
+        mesh = cls._create()
+        mesh.vertices = jnp.array(np.loadtxt(dirpath / vertices_filename, dtype=np.float64))
+        mesh.edges = jnp.array(np.loadtxt(dirpath / edges_filename, dtype=np.int64))
+        mesh.faces = jnp.array(np.loadtxt(dirpath / faces_filename, dtype=np.int64))
+        mesh.vertices_params = jnp.array(np.loadtxt(dirpath / vertices_params_filename, dtype=np.float64))
+        mesh.edges_params = jnp.array(np.loadtxt(dirpath / edges_params_filename, dtype=np.int64))
+        mesh.faces_params = jnp.array(np.loadtxt(dirpath / faces_params_filename, dtype=np.int64))
+        with (dirpath / constants_filename).open("r") as f:
+            numbers = f.readline().split()
+            mesh.width = float(numbers[0])
+            mesh.height = float(numbers[1])
+            mesh.MAX_EDGES_IN_ANY_FACE = int(numbers[2])
+        return mesh
+
+    def get_length(self, half_edge_id: Array) -> Array:
+        """Get the length of given edges."""
+
+        def _get_length(half_edge_id: Array) -> Array:
+            return get_length(half_edge_id, self.vertices, self.edges, self.faces, self.width, self.height)
+
+        return jax.vmap(_get_length)(half_edge_id)
+
+    def get_length_with_offset(self, half_edge_id: Array) -> Array:
+        """Get the length of given edges along with its offsets in an array (length, offset x, offset y)."""
+
+        def _get_length_with_offset(half_edge_id: Array) -> Array:
+            return get_length_with_offset(half_edge_id, self.vertices, self.edges, self.faces, self.width, self.height)
+
+        return jax.vmap(_get_length_with_offset)(half_edge_id)
+
+    def get_perimeter(self, face_id: Array) -> Array:
+        """Get the perimeter of given faces."""
+
+        def _get_perimeter(face_id: Array) -> Array:
+            return get_perimeter(
+                face_id, self.vertices, self.edges, self.faces, self.width, self.height, self.MAX_EDGES_IN_ANY_FACE
+            )
+
+        return jax.vmap(_get_perimeter)(face_id)
+
+    def get_area(self, face_id: Array) -> Array:
+        """Get the area of given faces."""
+
+        def _get_area(face_id: Array) -> Array:
+            return get_area(
+                face_id, self.vertices, self.edges, self.faces, self.width, self.height, self.MAX_EDGES_IN_ANY_FACE
+            )
+
+        return jax.vmap(_get_area)(face_id)
+
+    def update_boundary_conditions(self) -> None:
+        """Force periodic boundary conditions again after an update.
+
+        Most likely you'll never have to use it yourself, as it can be made automatically with a `PbcBilevelOptimizer`.
+        """
+        self.vertices, self.edges, self.faces = update_pbc(
+            self.vertices, self.edges, self.faces, self.width, self.height
+        )
 
 
 def _make_periodic(  # noqa: C901
