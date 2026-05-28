@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING
 
@@ -298,9 +299,21 @@ def test_pearson_e2() -> None:
     print(f"Test correlation took {elapsed_times:.2f} s.")
 
 
+def read_result() -> None:
+    """Demonstrates how to extract tension data from saved meshes."""
+    # First get all mesh filenames.
+    mesh_filenames = Path("tests/correlation/results/meshes_data/").glob("mesh*.npz")
+    # Load mesh file and extract in particular the tensions (edges params)
+    tensions = [PbcMesh.load_mesh(str(filename)).edges_params for filename in mesh_filenames]
+    print(tensions[0])
+    print(tensions[-1])
+    print(f"{len(tensions)} tension arrays acquired.")
+
+
 if __name__ == "__main__":
-    translate_base_mesh()
-    translate_target_mesh()
-    test_pearson_e2()
+    # translate_base_mesh()
+    # translate_target_mesh()
+    # test_pearson_e2()
+    read_result()
     # _expected_result()
     # print(load_base_mesh().edges_params)
