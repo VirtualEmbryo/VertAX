@@ -1,5 +1,6 @@
 """Main VertAX module."""
 
+from vertax.cg import nonlinear_cg
 from vertax.bilevelopt.boundedbop import BoundedBilevelOptimizer
 from vertax.bilevelopt.pbcbop import PbcBilevelOptimizer
 from vertax.meshes.bounded_mesh import BoundedMesh
@@ -17,5 +18,6 @@ __all__ = [
     "PbcMesh",
     "VertexPlot",
     "get_plot_mesh",
+    "nonlinear_cg",
     "plot_mesh",
 ]
