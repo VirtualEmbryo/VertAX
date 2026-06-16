@@ -54,6 +54,7 @@ If you use your own make sure to use the exact same signature as we do for these
 from vertax.bilevelopt.bilevelopt import _BilevelOptimizer
 from vertax.bilevelopt.boundedbop import BoundedBilevelOptimizer
 from vertax.bilevelopt.pbcbop import PbcBilevelOptimizer
+from vertax.cg import nonlinear_cg
 from vertax.cost import (
     cost_areas,
     cost_checkerboard,
@@ -86,6 +87,7 @@ __all__ = [  # noqa: RUF022
     "_BilevelOptimizer",
     "PbcBilevelOptimizer",
     "BoundedBilevelOptimizer",
+    "nonlinear_cg",
     "plot_mesh",
     "get_plot_mesh",
     "FacePlot",
