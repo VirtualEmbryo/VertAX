@@ -2,3 +2,4 @@
 
 [default.extend-words]
 arange = "arange"
+otu = "otu"

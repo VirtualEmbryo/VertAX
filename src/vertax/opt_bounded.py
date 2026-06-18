@@ -217,6 +217,7 @@ def _minimize_bounded(  # noqa: C901
             grad=grads,  # ty:ignore[unknown-argument]
             value_fn=value_fn,  # ty:ignore[unknown-argument]
         )
+        # updates, new_opt_state = solver.update(grads, opt_state)
 
         # Apply updates to the chosen array on selected indices
         if argnums == 0:
@@ -373,7 +374,10 @@ def _build_t1_repair_perm(
     the swap-only-if-better filter is idempotent, so duplicates are harmless.
     """
     perm = jnp.arange(vertTable_after.shape[0], dtype=jnp.int32)
+    # jax.debug.print("perm={x}", x=perm, ordered=True)
     # TODO : replace with jax.cond ?
+
+    # jax.debug.print("vertTableAfter={x}", x=vertTable_after, ordered=True)
     if vertTable_target is None:
         return perm
 
@@ -1333,7 +1337,7 @@ def outer_adjoint_state_bounded(
             face_params,
         )
 
-    heTable_before = heTable
+    # heTable_before = heTable
 
     (vertTable_eq, angTable_eq, heTable_eq, faceTable_eq), _L_in_value = inner_opt_bounded(
         vertTable,
@@ -1355,13 +1359,14 @@ def outer_adjoint_state_bounded(
         update_T1_func,
     )
 
-    perm = _build_t1_repair_perm(
-        vertTable_eq,
-        vertTable_target,
-        heTable_before,
-        heTable_eq,
-    )
-    vertTable_eq, heTable_eq = _apply_perm_to_state(perm, vertTable_eq, heTable_eq)
+    # jax.debug.print("vertTableAfter={x}", x=vertTable_eq, ordered=True)
+    # perm = _build_t1_repair_perm(
+    #     vertTable_eq,
+    #     vertTable_target,
+    #     heTable_before,
+    #     heTable_eq,
+    # )
+    # vertTable_eq, heTable_eq = _apply_perm_to_state(perm, vertTable_eq, heTable_eq)
 
     vertTable_eq_flat = jnp.concatenate((vertTable_eq.flatten(), angTable_eq))
 

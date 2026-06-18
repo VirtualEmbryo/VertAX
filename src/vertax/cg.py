@@ -1,6 +1,6 @@
 """Nonlinear conjugate gradient solver (optax ``GradientTransformation``).
 
-A drop-in optax solver implementing the **Polak–Ribière** nonlinear conjugate
+A drop-in optax solver implementing the **Polak-Ribière** nonlinear conjugate
 gradient (CG) method with automatic restarts and a zoom line search. It plugs
 into the same optimisation loops as ``optax.adam`` / ``optax.sgd`` (e.g.
 ``vertax.opt_bounded.inner_opt_bounded``), provided that loop forwards the line
@@ -21,9 +21,9 @@ The algorithm (one ``update`` call)
 Given the gradient ``g_k = ∇f(x_k)``, the previous gradient ``g_{k-1}`` and the
 previous direction ``d_{k-1}``:
 
-1. **Polak–Ribière coefficient**
-   ``β = ⟨g_k, g_k − g_{k-1}⟩ / ‖g_{k-1}‖²``.
-   The ``g_k − g_{k-1}`` term injects curvature information without ever forming
+1. **Polak-Ribière coefficient**
+   ``β = ⟨g_k, g_k - g_{k-1}⟩ / ‖g_{k-1}‖²``.
+   The ``g_k - g_{k-1}`` term injects curvature information without ever forming
    a Hessian.
 2. **Restart** (set ``β = 0`` → fall back to ``-g``) when either
    - it has been ``restart_every`` steps since the last restart (conjugacy
@@ -66,17 +66,17 @@ import optax.tree_utils as otu
 class NonlinearCGState(NamedTuple):
     """State carried by the nonlinear CG solver between ``update`` calls."""
 
-    count: jax.Array          # iteration counter (since init)
+    count: jax.Array  # iteration counter (since init)
     grad_prev: optax.Updates  # gradient at the previous point  (g_{k-1})
-    dir_prev: optax.Updates   # previous conjugate direction     (d_{k-1})
-    ls_state: Any             # zoom line-search inner state
+    dir_prev: optax.Updates  # previous conjugate direction     (d_{k-1})
+    ls_state: Any  # zoom line-search inner state
 
 
 def nonlinear_cg(
     restart_every: int = 10,
     max_linesearch_steps: int = 20,
 ) -> optax.GradientTransformationExtraArgs:
-    """Polak–Ribière nonlinear conjugate gradient with restarts + zoom line search.
+    """Polak-Ribière nonlinear conjugate gradient with restarts + zoom line search.
 
     Args:
         restart_every: force a steepest-descent restart every this many steps.
@@ -99,7 +99,7 @@ def nonlinear_cg(
         )
 
     def update_fn(
-        updates: optax.Updates,            # = grad, by optax convention
+        updates: optax.Updates,  # = grad, by optax convention
         state: NonlinearCGState,
         params: optax.Params | None = None,
         *,
@@ -122,9 +122,9 @@ def nonlinear_cg(
         # On the very first step grad_prev is zero → force a steepest-descent start.
         is_first = state.count == 0
 
-        # (1) Polak–Ribière coefficient.
-        gg_prev = otu.tree_vdot(g_prev, g_prev) + 1e-12       # ‖g_{k-1}‖²
-        y = otu.tree_sub(g, g_prev)                            # g_k − g_{k-1}
+        # (1) Polak-Ribière coefficient.
+        gg_prev = otu.tree_vdot(g_prev, g_prev) + 1e-12  # ‖g_{k-1}‖²
+        y = otu.tree_sub(g, g_prev)  # g_k - g_{k-1}
         beta_pr = otu.tree_vdot(g, y) / gg_prev
 
         # (2) Restart: periodic, or PR+ (β ≤ 0), or first step.
@@ -140,8 +140,12 @@ def nonlinear_cg(
 
         # (5) Zoom line search along d → updates = step · d.
         step_updates, ls_state = linesearch.update(
-            updates=d, state=state.ls_state, params=params,
-            value=value, grad=g, value_fn=value_fn,
+            updates=d,
+            state=state.ls_state,
+            params=params,
+            value=value,
+            grad=g,
+            value_fn=value_fn,
         )
 
         new_state = NonlinearCGState(
@@ -152,4 +156,4 @@ def nonlinear_cg(
         )
         return step_updates, new_state
 
-    return optax.GradientTransformationExtraArgs(init_fn, update_fn)
+    return optax.GradientTransformationExtraArgs(init_fn, update_fn)  # ty:ignore[invalid-argument-type]
