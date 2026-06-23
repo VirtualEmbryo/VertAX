@@ -1,6 +1,7 @@
 """Bi-level optimizers abstract class."""
 
 from __future__ import annotations
+import sys
 
 from collections.abc import Callable
 from pathlib import Path
@@ -29,9 +30,9 @@ class _BilevelOptimizer:
 
     def __init__(self) -> None:
         """Initialize shared parameters and hyper-parameters between Bi-level optimizers."""
-        self.bilevel_optimization_method: BilevelOptimizationMethod = BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION
+        self._bilevel_optimization_method: BilevelOptimizationMethod = BilevelOptimizationMethod.EQUILIBRIUM_PROPAGATION
         """Which bilevel optimization method to use. Defaults to Equilibrium Propagation."""
-        self.inner_solver: optax.GradientTransformation = optax.sgd(learning_rate=0.01)
+        self._inner_solver: optax.GradientTransformation = optax.sgd(learning_rate=0.01)
         """Which inner solver to use. Defaults to `optax.sgd(learning_rate=0.01)`."""
         self.outer_solver: optax.GradientTransformation = optax.adam(learning_rate=0.0001, nesterov=True)
         """Which outer solver to use. Defaults to `optax.adam(learning_rate=0.0001, nesterov=True)`"""
@@ -88,6 +89,41 @@ class _BilevelOptimizer:
     def update_T1(self, value: bool) -> None:  # noqa: N802
         self._update_T1 = value
         self._set_update_T1_func(value)
+
+    @property
+    def inner_solver(self) -> optax.GradientTransformation:
+        """Optax inner solver used."""
+        return self._inner_solver
+
+    @inner_solver.setter
+    def inner_solver(self, new_inner_solver: optax.GradientTransformation) -> None:
+        if (
+            "nonlinear_cg" in str(new_inner_solver)
+            and self.bilevel_optimization_method == BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION
+        ):
+            msg = f"[ WARNING ] The conjugate gradient inner solver is incompatible with the current optimization \
+method ({BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION}). As such the inner solver was not changed. \
+Current inner solver still is {self.inner_solver}. Change the optimization method if you want \
+to use the conjugate gradient inner solver."
+            print(msg, file=sys.stderr)
+        else:
+            self._inner_solver = new_inner_solver
+
+    @property
+    def bilevel_optimization_method(self) -> BilevelOptimizationMethod:
+        """The bilevel optimization method currently used."""
+        return self._bilevel_optimization_method
+
+    @bilevel_optimization_method.setter
+    def bilevel_optimization_method(self, method: BilevelOptimizationMethod) -> None:
+        if "nonlinear_cg" in str(self.inner_solver) and method == BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION:
+            msg = f"[ WARNING ] The conjugate gradient inner solver is incompatible with the \
+{BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION} method. As such the method was not changed. \
+Current method still is {self.bilevel_optimization_method}. Change the inner solver if you want \
+to use the {BilevelOptimizationMethod.AUTOMATIC_DIFFERENTIATION} optimization method."
+            print(msg, file=sys.stderr)
+        else:
+            self._bilevel_optimization_method = method
 
     def compute_outer_loss(
         self,
