@@ -96,7 +96,7 @@ UpdateT1Func = Callable[
 
 
 @partial(jit, static_argnums=(9, 10, 11, 12, 13, 14, 15, 16, 17, 18))
-def _jit_minimize(
+def _jit_minimize(  # noqa: C901
     vertTable: Array,
     heTable: Array,
     faceTable: Array,
@@ -126,6 +126,7 @@ def _jit_minimize(
         selected_hes,
         selected_faces,
     ][optimization_target.value]
+    argnums = optimization_target.value
     opt_state = solver.init(x0)
 
     # Initial loss and bookkeeping
@@ -145,7 +146,7 @@ def _jit_minimize(
 
     # Define the inner step function for lax.scan
     # The inner function is defined *without* @jit because it's compiled by lax.scan/jit on minimize
-    def scan_step(
+    def scan_step(  # noqa: C901
         carry: tuple[Array, Array, Array, Array, Array, Array, Array, Array, Array, int, Array, Array], i: int
     ) -> tuple[tuple[Array, Array, Array, Array, Array, Array, Array, Array, Array, int, Array, Array], None]:
         # Unpack the carry structure:
@@ -186,11 +187,100 @@ def _jit_minimize(
         # Gradient wrt chosen argnums
         grads = grad(L_in, argnums=optimization_target.value)(vt, ht, ft, vp, hp, fp)
 
+        # value_fn re-evaluates L_in as a function of the solver's params only
+        # (everything else held fixed at the current step). Line-search solvers
+        # (nonlinear_cg, lbfgs) need it; adam/sgd ignore the extra arguments.
+        if argnums == 0:
+            params_cur = vt
+
+            def value_fn(p: Array) -> Array:
+                return L_in(
+                    p[selected_verts],
+                    ht[selected_hes],
+                    ft[selected_faces],
+                    vp[selected_verts],
+                    hp[selected_hes],
+                    fp[selected_faces],
+                )
+        elif argnums == 2:
+            params_cur = ht
+
+            def value_fn(p: Array) -> Array:
+                return L_in(
+                    vt[selected_verts],
+                    p[selected_hes],
+                    ft[selected_faces],
+                    vp[selected_verts],
+                    hp[selected_hes],
+                    fp[selected_faces],
+                )
+        elif argnums == 3:
+            params_cur = ft
+
+            def value_fn(p: Array) -> Array:
+                return L_in(
+                    vt[selected_verts],
+                    ht[selected_hes],
+                    p[selected_faces],
+                    vp[selected_verts],
+                    hp[selected_hes],
+                    fp[selected_faces],
+                )
+        elif argnums == 4:
+            params_cur = vp
+
+            def value_fn(p: Array) -> Array:
+                return L_in(
+                    vt[selected_verts],
+                    ht[selected_hes],
+                    ft[selected_faces],
+                    p[selected_verts],
+                    hp[selected_hes],
+                    fp[selected_faces],
+                )
+        elif argnums == 5:
+            params_cur = hp
+
+            def value_fn(p: Array) -> Array:
+                return L_in(
+                    vt[selected_verts],
+                    ht[selected_hes],
+                    ht[selected_faces],
+                    vp[selected_verts],
+                    p[selected_hes],
+                    fp[selected_faces],
+                )
+                return L_in(vt, ht, ft, selected_verts, selected_hes, selected_faces, vp, p, fp)
+        else:  # argnums == 6
+            params_cur = fp
+
+            def value_fn(p: Array) -> Array:
+                return L_in(
+                    vt[selected_verts],
+                    ht[selected_hes],
+                    ft[selected_faces],
+                    vp[selected_verts],
+                    hp[selected_hes],
+                    p[selected_faces],
+                )
+
+        # Optimizer update. Forward the line-search args unconditionally:
+        # first-order solvers (adam/sgd) ignore them, line-search solvers use them.
+        updates: Array
+        new_opt_state: Array
+        updates, new_opt_state = solver.update(  # ty:ignore[invalid-assignment]
+            grads,
+            opt_state,
+            params_cur,
+            value=L_current,  # ty:ignore[unknown-argument]
+            grad=grads,  # ty:ignore[unknown-argument]
+            value_fn=value_fn,  # ty:ignore[unknown-argument]
+        )
         # Optimizer update
-        updates, new_opt_state = solver.update(grads, opt_state)
+        # updates, new_opt_state = solver.update(grads, opt_state)
 
         # Apply updates to the chosen array on selected indices
-        updates_sel = updates.at[sel].get()  # type: ignore
+        updates_sel = updates.at[sel].get()
 
         # Conditional application of optimization update and state
         arrays = [vt, ht, ft, vp, hp, fp]
@@ -761,7 +851,7 @@ def outer_eq_prop(
         selected_hes,
         selected_faces,
         image_target,
-        -beta,
+        0,
         solver_inner,
         min_dist_T1,
         iterations_max,

@@ -15,7 +15,7 @@ import optax
 from jax import vmap
 from numpy.typing import NDArray
 
-from vertax import EdgePlot, FacePlot, PbcBilevelOptimizer, PbcMesh, cost_v2v, plot_mesh
+from vertax import EdgePlot, FacePlot, PbcBilevelOptimizer, PbcMesh, cost_v2v, nonlinear_cg, plot_mesh
 from vertax.geo import get_area, get_length
 from vertax.method_enum import BilevelOptimizationMethod
 
@@ -79,7 +79,8 @@ def create_optimizer() -> PbcBilevelOptimizer:
     bop.max_nb_iterations = 1000
     bop.tolerance = 0.00001
     bop.patience = 5
-    bop.inner_solver = optax.sgd(learning_rate=0.01)
+    # bop.inner_solver = optax.sgd(learning_rate=0.01)
+    bop.inner_solver = nonlinear_cg(restart_every=10)
     bop.outer_solver = optax.adam(learning_rate=0.0001, nesterov=True)
     bop.bilevel_optimization_method = BilevelOptimizationMethod.ADJOINT_STATE
     bop.loss_function_outer = cost_v2v
